@@ -86,30 +86,62 @@ def main():
 def login_page():
     st.header("Login")
     
+    # Demo credentials info
+    with st.expander("🧪 Demo Credentials", expanded=False):
+        st.info("**For testing purposes:**")
+        st.code("Email: demo@mealplanner.com\nPassword: demo123")
+        if st.button("Use Demo Login"):
+            # Create demo user if doesn't exist
+            demo_user = services['user_repo'].find_by_email("demo@mealplanner.com")
+            if not demo_user:
+                demo_user = services['user_repo'].create_user("Demo User", "demo@mealplanner.com")
+            
+            st.session_state.user_id = demo_user.user_id
+            st.session_state.is_premium = False
+            st.success("🎉 Logged in with demo account!")
+            st.rerun()
+    
     with st.form("login_form"):
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
+        email = st.text_input("Email", placeholder="Enter your email address")
+        password = st.text_input("Password", type="password", placeholder="Enter your password")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            submitted = st.form_submit_button("Login", use_container_width=True)
+        with col2:
+            remember_me = st.checkbox("Remember me", help="Keep you logged in (demo feature)")
         
         if submitted and email and password:
             # Simple demo login - find user by email
             user = services['user_repo'].find_by_email(email)
             if user:
                 st.session_state.user_id = user.user_id
-                st.session_state.is_premium = False  # Default to free tier
+                st.session_state.is_premium = False
+                
+                # Remember login if checked
+                if remember_me:
+                    st.session_state.remembered_email = email
+                
                 st.success(f"🎉 Welcome back, {user.name}!")
                 st.rerun()
             else:
                 st.error("❌ Account not found. Please check your email or register for a new account.")
+    
+    # Show remembered email if exists
+    if 'remembered_email' in st.session_state:
+        st.info(f"💭 Last login: {st.session_state.remembered_email}")
 
 def register_page():
     st.header("Register")
     
+    # Quick demo account creation
+    st.info("💡 **Quick Start**: Use the demo login on the Login page, or create your own account below.")
+    
     with st.form("register_form"):
-        username = st.text_input("Username")
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Register")
+        username = st.text_input("Username", placeholder="Enter your name")
+        email = st.text_input("Email", placeholder="Enter your email address")
+        password = st.text_input("Password", type="password", placeholder="Create a password")
+        submitted = st.form_submit_button("Create Account", use_container_width=True)
         
         if submitted and username and email and password:
             try:
@@ -123,6 +155,7 @@ def register_page():
                 user = services['user_repo'].create_user(username, email)
                 st.session_state.user_id = user.user_id
                 st.session_state.is_premium = False  # Default to free tier
+                st.session_state.remembered_email = email  # Remember this email
                 st.success("🎉 Account created successfully! Welcome to Meal Planner Pro!")
                 st.rerun()
             except Exception as e:
