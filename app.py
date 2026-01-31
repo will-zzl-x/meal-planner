@@ -9,12 +9,9 @@ sys.path.append(str(Path(__file__).parent / "src"))
 from src.core.services.body_composition_service import BodyCompositionService
 from src.core.services.calorie_banking_service import CalorieBankingService
 from src.core.services.macro_tracking_service import MacroTrackingService
-from src.core.services.enhanced_grocery_generator import EnhancedGroceryListGenerator
 from src.core.services.smart_inventory_service import SmartInventoryService
 from src.repositories.sqlite.user_repository import SQLiteUserRepository
-from src.repositories.sqlite.recipe_repository import SQLiteRecipeRepository
 from src.repositories.sqlite.calorie_tracking_repository import SQLiteCalorieTrackingRepository
-from src.repositories.database_manager import DatabaseManager
 
 # Page config
 st.set_page_config(
@@ -33,19 +30,16 @@ if 'is_premium' not in st.session_state:
 # Initialize services
 @st.cache_resource
 def init_services():
-    db_manager = DatabaseManager()
-    user_repo = SQLiteUserRepository(db_manager)
-    recipe_repo = SQLiteRecipeRepository(db_manager)
-    calorie_repo = SQLiteCalorieTrackingRepository(db_manager)
+    db_path = "meal_planner.db"
+    user_repo = SQLiteUserRepository(db_path)
+    calorie_repo = SQLiteCalorieTrackingRepository(db_path)
     
     return {
         'body_comp': BodyCompositionService(),
         'calorie_banking': CalorieBankingService(),
         'macro_tracking': MacroTrackingService(),
-        'grocery_generator': EnhancedGroceryListGenerator(recipe_repo),
         'inventory': SmartInventoryService(),
         'user_repo': user_repo,
-        'recipe_repo': recipe_repo,
         'calorie_repo': calorie_repo
     }
 
