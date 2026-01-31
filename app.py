@@ -72,6 +72,11 @@ def main():
         else:
             register_page()
     else:
+        # Handle page redirects from dashboard
+        if 'page_redirect' in st.session_state:
+            page = st.session_state.page_redirect
+            del st.session_state.page_redirect
+        
         if page == "Dashboard":
             dashboard_page()
         elif page == "Meal Planning":
@@ -205,35 +210,17 @@ def dashboard_page():
     
     st.subheader("🎯 Quick Actions")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
         if st.button("📝 Log Today's Meals", use_container_width=True):
-            st.session_state.dashboard_action = "meal_planning"
+            st.session_state.page_redirect = "Meal Planning"
             st.rerun()
     
     with col2:
-        if st.button("🛒 View Grocery List", use_container_width=True):
-            st.session_state.dashboard_action = "grocery_lists"
-            st.rerun()
-    
-    with col3:
         if st.button("📦 Inventory & Shopping", use_container_width=True):
-            st.session_state.dashboard_action = "inventory"
+            st.session_state.page_redirect = "Inventory & Shopping"
             st.rerun()
-    
-    # Handle quick action navigation
-    if 'dashboard_action' in st.session_state:
-        if st.session_state.dashboard_action == "meal_planning":
-            st.info("🍽️ Redirecting to Meal Planning...")
-            del st.session_state.dashboard_action
-            st.switch_page = "Meal Planning"  # This would work in a multi-page app
-        elif st.session_state.dashboard_action == "grocery_lists":
-            st.info("🛒 Redirecting to Grocery Lists...")
-            del st.session_state.dashboard_action
-        elif st.session_state.dashboard_action == "inventory":
-            st.info("📦 Redirecting to Inventory...")
-            del st.session_state.dashboard_action
     
     # Premium upgrade prompt for free users
     if not st.session_state.is_premium:
@@ -387,39 +374,30 @@ def inventory_shopping_page():
     with tab1:
         st.subheader("➕ Add Inventory Item")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
             item_name = st.text_input("Item name:")
         with col2:
             quantity = st.number_input("Quantity:", min_value=0.1, value=1.0, step=0.1)
-        with col3:
-            unit = st.selectbox("Unit:", ["lbs", "oz", "cups", "pieces", "packages"])
         
-        col1, col2 = st.columns(2)
-        with col1:
-            purchase_date = st.date_input("Purchase date:", value=datetime.now().date())
-        with col2:
-            storage_location = st.selectbox("Storage:", ["Fridge", "Freezer", "Pantry"])
+        purchase_date = st.date_input("Purchase date:", value=datetime.now().date())
         
         if st.button("Add to Inventory") and item_name:
             if 'inventory' not in st.session_state:
                 st.session_state.inventory = []
             
-            # Calculate expiration (simplified)
-            expiration_days = {"Fridge": 7, "Freezer": 90, "Pantry": 365}
-            expiration_date = purchase_date + timedelta(days=expiration_days[storage_location])
+            # Simple expiration calculation - 7 days from purchase
+            expiration_date = purchase_date + timedelta(days=7)
             
             item = {
                 "name": item_name,
                 "quantity": quantity,
-                "unit": unit,
                 "purchase_date": purchase_date,
-                "expiration_date": expiration_date,
-                "storage": storage_location
+                "expiration_date": expiration_date
             }
             
             st.session_state.inventory.append(item)
-            st.success(f"✅ Added {quantity} {unit} of {item_name} to inventory!")
+            st.success(f"✅ Added {quantity} {item_name} to inventory!")
             st.rerun()
         
         # Current inventory display
@@ -448,7 +426,7 @@ def inventory_shopping_page():
                     
                     with col1:
                         st.write(f"**{item['name']}**")
-                        st.write(f"{item['quantity']} {item['unit']} • {item['storage']}")
+                        st.write(f"{item['quantity']} units")
                     
                     with col2:
                         st.write(f"Purchased: {item['purchase_date']}")
