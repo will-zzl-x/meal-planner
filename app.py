@@ -10,9 +10,9 @@ from src.core.services.calorie_banking_service import CalorieBankingService
 from src.core.services.macro_tracking_service import MacroTrackingService
 from src.core.services.enhanced_grocery_generator import EnhancedGroceryListGenerator
 from src.core.services.smart_inventory_service import SmartInventoryService
-from src.repositories.sqlite.user_repository import UserRepository
-from src.repositories.sqlite.recipe_repository import RecipeRepository
-from src.repositories.sqlite.calorie_tracking_repository import CalorieTrackingRepository
+from src.repositories.sqlite.user_repository import SQLiteUserRepository
+from src.repositories.sqlite.recipe_repository import SQLiteRecipeRepository
+from src.repositories.sqlite.calorie_tracking_repository import SQLiteCalorieTrackingRepository
 from src.repositories.database_manager import DatabaseManager
 
 # Page config
@@ -33,9 +33,9 @@ if 'is_premium' not in st.session_state:
 @st.cache_resource
 def init_services():
     db_manager = DatabaseManager()
-    user_repo = UserRepository(db_manager)
-    recipe_repo = RecipeRepository(db_manager)
-    calorie_repo = CalorieTrackingRepository(db_manager)
+    user_repo = SQLiteUserRepository(db_manager)
+    recipe_repo = SQLiteRecipeRepository(db_manager)
+    calorie_repo = SQLiteCalorieTrackingRepository(db_manager)
     
     return {
         'body_comp': BodyCompositionService(),
