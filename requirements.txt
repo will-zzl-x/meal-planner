@@ -1,7 +1,3 @@
 streamlit>=1.28.0
-sqlite3
-decimal
-typing
-dataclasses
-datetime
-pathlib
+pandas>=1.5.0
+plotly>=5.0.0
