@@ -7,8 +7,8 @@ import uuid
 from typing import List, Optional
 from decimal import Decimal
 
-from ..core.interfaces.recipe_repository import IRecipeRepository
-from ..core.domain.models import Recipe, Ingredient
+from ...core.interfaces.recipe_repository import IRecipeRepository
+from ...core.domain.models import Recipe, Ingredient
 from ..database_manager import DatabaseManager
 
 class SQLiteRecipeRepository(IRecipeRepository):

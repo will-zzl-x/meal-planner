@@ -8,7 +8,7 @@ from typing import Optional
 from datetime import datetime
 from decimal import Decimal
 
-from ..core.interfaces.user_repository import IUserRepository, UserProfile
+from ...core.interfaces.user_repository import IUserRepository, UserProfile
 from ..database_manager import DatabaseManager
 
 class SQLiteUserRepository(IUserRepository):
