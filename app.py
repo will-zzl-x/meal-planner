@@ -98,7 +98,7 @@ def login_page():
             user = services['user_repo'].find_by_email(email)
             if user:
                 st.session_state.user_id = user.user_id
-                st.session_state.is_premium = user.subscription_tier == "premium"
+                st.session_state.is_premium = False  # Default to free tier
                 st.success("Logged in successfully!")
                 st.rerun()
             else:
@@ -118,7 +118,7 @@ def register_page():
                 # Create user with just username and email (password handling would be added later)
                 user = services['user_repo'].create_user(username, email)
                 st.session_state.user_id = user.user_id
-                st.session_state.is_premium = user.subscription_tier == "premium"
+                st.session_state.is_premium = False  # Default to free tier
                 st.success("Account created successfully!")
                 st.rerun()
             except Exception as e:
