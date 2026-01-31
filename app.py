@@ -89,20 +89,20 @@ def login_page():
     st.header("Login")
     
     with st.form("login_form"):
-        username = st.text_input("Username")
+        email = st.text_input("Email")
         password = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Login")
         
-        if submitted and username and password:
-            # Simple demo login - in production, use proper authentication
-            user = services['user_repo'].get_user_by_username(username)
+        if submitted and email and password:
+            # Simple demo login - find user by email
+            user = services['user_repo'].find_by_email(email)
             if user:
                 st.session_state.user_id = user.user_id
                 st.session_state.is_premium = user.subscription_tier == "premium"
                 st.success("Logged in successfully!")
                 st.rerun()
             else:
-                st.error("Invalid credentials")
+                st.error("User not found. Please register first.")
 
 def register_page():
     st.header("Register")
@@ -115,9 +115,10 @@ def register_page():
         
         if submitted and username and email and password:
             try:
-                user_id = services['user_repo'].create_user(username, email, password)
-                st.session_state.user_id = user_id
-                st.session_state.is_premium = False
+                # Create user with just username and email (password handling would be added later)
+                user = services['user_repo'].create_user(username, email)
+                st.session_state.user_id = user.user_id
+                st.session_state.is_premium = user.subscription_tier == "premium"
                 st.success("Account created successfully!")
                 st.rerun()
             except Exception as e:
