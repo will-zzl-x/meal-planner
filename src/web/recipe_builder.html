@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meal Planner - Recipe Builder</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .search-section, .recipe-section { border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+        .ingredient-search { width: 100%; padding: 10px; margin-bottom: 10px; }
+        .search-results { max-height: 400px; overflow-y: auto; }
+        .food-item { border: 1px solid #eee; padding: 10px; margin: 5px 0; cursor: pointer; }
+        .food-item:hover { background-color: #f5f5f5; }
+        .recipe-ingredients { min-height: 200px; border: 1px solid #eee; padding: 10px; }
+        .ingredient-item { display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid #eee; }
+        .btn { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background-color: #0056b3; }
+        .btn-remove { background-color: #dc3545; padding: 5px 10px; }
+        .nutrition-info { font-size: 0.9em; color: #666; }
+        .recipe-form input, .recipe-form textarea { width: 100%; padding: 8px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>🍽️ Meal Planner - Recipe Builder</h1>
+    
+    <div class="container">
+        <!-- Food Search Section -->
+        <div class="search-section">
+            <h2>Search Ingredients</h2>
+            <input type="text" id="foodSearch" class="ingredient-search" placeholder="Search for ingredients (e.g., chicken breast, rice, broccoli)">
+            <div id="searchResults" class="search-results"></div>
+        </div>
+        
+        <!-- Recipe Builder Section -->
+        <div class="recipe-section">
+            <h2>Build Recipe</h2>
+            <div class="recipe-form">
+                <input type="text" id="recipeName" placeholder="Recipe Name" required>
+                <textarea id="recipeDescription" placeholder="Description (optional)" rows="2"></textarea>
+                <input type="number" id="recipeServings" placeholder="Servings" value="4" min="1">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <input type="number" id="recipePrepTime" placeholder="Prep Time (min)" value="15" min="0">
+                    <input type="number" id="recipeCookTime" placeholder="Cook Time (min)" value="30" min="0">
+                </div>
+            </div>
+            
+            <h3>Ingredients</h3>
+            <div id="recipeIngredients" class="recipe-ingredients">
+                <p style="color: #666; text-align: center;">Search and click ingredients to add them</p>
+            </div>
+            
+            <div id="nutritionSummary" class="nutrition-info"></div>
+            
+            <button class="btn" onclick="saveRecipe()">Save Recipe</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+        let currentIngredients = [];
+        let searchTimeout;
+
+        // Search for foods with debouncing
+        document.getElementById('foodSearch').addEventListener('input', function(e) {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            
+            if (query.length < 2) {
+                document.getElementById('searchResults').innerHTML = '';
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => searchFoods(query), 300);
+        });
+
+        async function searchFoods(query) {
+            try {
+                const response = await fetch(`${API_BASE}/foods/search?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('searchResults').innerHTML = `<p style="color: red;">Error: ${data.error}</p>`;
+                    return;
+                }
+                
+                displaySearchResults(data.foods);
+            } catch (error) {
+                document.getElementById('searchResults').innerHTML = `<p style="color: red;">Search failed: ${error.message}</p>`;
+            }
+        }
+
+        function displaySearchResults(foods) {
+            const resultsDiv = document.getElementById('searchResults');
+            
+            if (foods.length === 0) {
+                resultsDiv.innerHTML = '<p>No foods found</p>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = foods.map(food => `
+                <div class="food-item" onclick="addIngredient('${food.name}', ${food.calories_per_100g}, ${food.protein_g}, ${food.carbs_g}, ${food.fat_g})">
+                    <strong>${food.name}</strong>
+                    <div class="nutrition-info">
+                        ${food.calories_per_100g} cal | P: ${food.protein_g}g | C: ${food.carbs_g}g | F: ${food.fat_g}g
+                        <span style="float: right;">${food.source}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addIngredient(name, calories, protein, carbs, fat) {
+            const amount = prompt(`How much ${name}? (in grams)`, '100');
+            if (!amount || isNaN(amount)) return;
+            
+            const ingredient = {
+                name,
+                amount: parseFloat(amount),
+                unit: 'g',
+                calories_per_100g: calories,
+                protein_g: protein,
+                carbs_g: carbs,
+                fat_g: fat,
+                total_calories: (calories * parseFloat(amount)) / 100
+            };
+            
+            currentIngredients.push(ingredient);
+            updateRecipeDisplay();
+        }
+
+        function removeIngredient(index) {
+            currentIngredients.splice(index, 1);
+            updateRecipeDisplay();
+        }
+
+        function updateRecipeDisplay() {
+            const ingredientsDiv = document.getElementById('recipeIngredients');
+            
+            if (currentIngredients.length === 0) {
+                ingredientsDiv.innerHTML = '<p style="color: #666; text-align: center;">Search and click ingredients to add them</p>';
+                document.getElementById('nutritionSummary').innerHTML = '';
+                return;
+            }
+            
+            ingredientsDiv.innerHTML = currentIngredients.map((ing, index) => `
+                <div class="ingredient-item">
+                    <div>
+                        <strong>${ing.name}</strong> - ${ing.amount}${ing.unit}
+                        <div class="nutrition-info">${Math.round(ing.total_calories)} calories</div>
+                    </div>
+                    <button class="btn btn-remove" onclick="removeIngredient(${index})">Remove</button>
+                </div>
+            `).join('');
+            
+            // Calculate totals
+            const totals = currentIngredients.reduce((acc, ing) => {
+                const factor = ing.amount / 100;
+                return {
+                    calories: acc.calories + (ing.calories_per_100g * factor),
+                    protein: acc.protein + (ing.protein_g * factor),
+                    carbs: acc.carbs + (ing.carbs_g * factor),
+                    fat: acc.fat + (ing.fat_g * factor)
+                };
+            }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+            
+            document.getElementById('nutritionSummary').innerHTML = `
+                <h4 style="margin: 10px 0 5px 0; color: #333;">Recipe Nutrition (Total):</h4>
+                <div style="padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                    <strong>${Math.round(totals.calories)} calories</strong> | 
+                    Protein: ${Math.round(totals.protein)}g | 
+                    Carbs: ${Math.round(totals.carbs)}g | 
+                    Fat: ${Math.round(totals.fat)}g
+                </div>
+            `;
+        }
+
+        async function saveRecipe() {
+            const name = document.getElementById('recipeName').value.trim();
+            if (!name) {
+                alert('Please enter a recipe name');
+                return;
+            }
+            
+            if (currentIngredients.length === 0) {
+                alert('Please add at least one ingredient');
+                return;
+            }
+            
+            const recipe = {
+                name,
+                description: document.getElementById('recipeDescription').value.trim(),
+                servings: parseInt(document.getElementById('recipeServings').value) || 1,
+                prep_time: parseInt(document.getElementById('recipePrepTime').value) || 0,
+                cook_time: parseInt(document.getElementById('recipeCookTime').value) || 0,
+                ingredients: currentIngredients.map(ing => ({
+                    name: ing.name,
+                    amount: ing.amount,
+                    unit: ing.unit,
+                    calories: ing.total_calories
+                }))
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/recipes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(recipe)
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    alert(`Error: ${result.error}`);
+                } else {
+                    alert('Recipe saved successfully!');
+                    // Reset form
+                    document.getElementById('recipeName').value = '';
+                    document.getElementById('recipeDescription').value = '';
+                    currentIngredients = [];
+                    updateRecipeDisplay();
+                }
+            } catch (error) {
+                alert(`Save failed: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
