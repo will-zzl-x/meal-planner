@@ -166,11 +166,13 @@ def dashboard_page():
 def meal_planning_page():
     st.header("🗓️ Weekly Meal Planning")
     
-    # Week selector
-    col1, col2 = st.columns([3, 1])
+    # Week selector and meal count
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         selected_date = st.date_input("Select week starting:", value=datetime.now().date())
     with col2:
+        num_meals = st.number_input("Meals per day:", min_value=1, max_value=8, value=4)
+    with col3:
         if st.button("This Week"):
             st.rerun()
     
@@ -209,30 +211,29 @@ def meal_planning_page():
     # Weekly meal grid
     st.subheader("Weekly Meal Plan")
     
-    # Initialize meal plan in session state
-    if 'meal_plan' not in st.session_state:
-        st.session_state.meal_plan = {day: {"breakfast": [], "lunch": [], "dinner": [], "snacks": []} for day in days}
+    # Initialize meal plan in session state with dynamic meal count
+    if 'meal_plan' not in st.session_state or 'num_meals' not in st.session_state or st.session_state.num_meals != num_meals:
+        st.session_state.num_meals = num_meals
+        st.session_state.meal_plan = {day: {f"meal_{i+1}": [] for i in range(num_meals)} for day in days}
     
     # Meal planning grid
-    meal_types = ["Breakfast", "Lunch", "Dinner", "Snacks"]
-    
     for day in days:
         st.subheader(f"📅 {day}")
         
-        cols = st.columns(4)
-        for i, meal_type in enumerate(meal_types):
+        cols = st.columns(num_meals)
+        for i in range(num_meals):
             with cols[i]:
-                st.write(f"**{meal_type}**")
+                meal_key = f"meal_{i+1}"
+                st.write(f"**Meal {i+1}**")
                 
                 # Meal slot container
-                meal_key = meal_type.lower()
                 meals = st.session_state.meal_plan[day][meal_key]
                 
                 if meals:
                     for j, meal in enumerate(meals):
                         with st.container():
                             st.write(f"🍽️ {meal}")
-                            if st.button("❌", key=f"remove_{day}_{meal_type}_{j}"):
+                            if st.button("❌", key=f"remove_{day}_{meal_key}_{j}"):
                                 st.session_state.meal_plan[day][meal_key].remove(meal)
                                 st.rerun()
                 else:
@@ -244,11 +245,11 @@ def meal_planning_page():
                     selected_recipe = st.selectbox(
                         "Add meal:", 
                         recipe_options,
-                        key=f"select_{day}_{meal_type}"
+                        key=f"select_{day}_{meal_key}"
                     )
                     
                     if selected_recipe != "Select recipe...":
-                        if st.button("Add", key=f"add_{day}_{meal_type}"):
+                        if st.button("Add", key=f"add_{day}_{meal_key}"):
                             st.session_state.meal_plan[day][meal_key].append(selected_recipe)
                             st.rerun()
         
@@ -263,8 +264,9 @@ def meal_planning_page():
             total_calories = 0
             total_protein = 0
             
-            for meal_type in meal_types:
-                meals = st.session_state.meal_plan[day][meal_type.lower()]
+            for meal_num in range(num_meals):
+                meal_key = f"meal_{meal_num+1}"
+                meals = st.session_state.meal_plan[day][meal_key]
                 for meal in meals:
                     if 'selected_recipes' in st.session_state and meal in st.session_state.selected_recipes:
                         recipe = st.session_state.selected_recipes[meal]
@@ -287,7 +289,7 @@ def meal_planning_page():
     
     with col3:
         if st.button("🔄 Clear All", use_container_width=True):
-            st.session_state.meal_plan = {day: {"breakfast": [], "lunch": [], "dinner": [], "snacks": []} for day in days}
+            st.session_state.meal_plan = {day: {f"meal_{i+1}": [] for i in range(num_meals)} for day in days}
             st.rerun()
     
     # Premium features teaser
