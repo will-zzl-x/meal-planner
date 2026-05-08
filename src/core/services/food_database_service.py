@@ -4,27 +4,16 @@ Clean Architecture - External Data Integration Layer
 """
 import requests
 import json
-from decimal import Decimal
-from typing import List, Dict, Optional, Union
-from dataclasses import dataclass
+import sys
 import time
+from decimal import Decimal
+from pathlib import Path
+from typing import List, Dict, Optional, Union
 
-@dataclass
-class FoodItem:
-    """Enhanced food item with database source tracking.
+# Import from core layer
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
-    Macros and calories are expressed per `unit` (e.g. per piece, per scoop, per 100g).
-    """
-    name: str
-    calories_per_unit: int
-    protein_per_unit: Decimal
-    carbs_per_unit: Decimal
-    fats_per_unit: Decimal
-    unit: str
-    category: str  # "food" or "restaurant"
-    source: str  # Track which database this came from
-    food_id: Optional[str] = None  # Original database ID
-    brand: Optional[str] = None
+from core.domain.models import FoodItem  # noqa: F401  (re-exported for legacy callers)
 
 class FoodDatabaseService:
     """Service for searching multiple free food databases."""

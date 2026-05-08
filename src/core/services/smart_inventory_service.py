@@ -2,36 +2,17 @@
 Smart Inventory Management Service.
 Tracks expiration dates, suggests recipes for expiring items, optimizes shopping.
 """
+import sys
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 from datetime import date, timedelta
 from dataclasses import dataclass
+from pathlib import Path
 
-@dataclass
-class InventoryItem:
-    """Inventory item with expiration tracking."""
-    name: str
-    quantity: Decimal
-    unit: str
-    expiration_date: Optional[date]
-    purchase_date: date
-    location: str = "pantry"  # pantry, fridge, freezer
-    
-    @property
-    def days_until_expiration(self) -> Optional[int]:
-        if not self.expiration_date:
-            return None
-        return (self.expiration_date - date.today()).days
-    
-    @property
-    def is_expiring_soon(self) -> bool:
-        days = self.days_until_expiration
-        return days is not None and days <= 3
-    
-    @property
-    def is_expired(self) -> bool:
-        days = self.days_until_expiration
-        return days is not None and days < 0
+# Import from core layer
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
+from core.domain.models import InventoryItem  # noqa: F401  (re-exported for legacy callers)
 
 @dataclass
 class ShoppingOptimization:

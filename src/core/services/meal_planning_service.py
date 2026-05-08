@@ -12,23 +12,9 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from core.domain.models import Recipe, InventoryItem, GroceryListItem
+from core.domain.models import Recipe, InventoryItem, GroceryListItem, FoodItem
 from core.services import IngredientAggregator, RecipeScaler, UnitConverter, InventoryService
 from core.services.flexible_dieting import CalorieBankingService, WeightTrackingService
-
-@dataclass
-class FoodItem:
-    """Individual food item from database (not a recipe).
-
-    Macros and calories are expressed per `unit` (e.g. per piece, per scoop, per 100g).
-    """
-    name: str
-    calories_per_unit: int
-    protein_per_unit: Decimal
-    carbs_per_unit: Decimal
-    fats_per_unit: Decimal
-    unit: str  # "100g", "piece", "cup", "scoop", etc.
-    category: str  # "food" or "restaurant"
 
 @dataclass
 class MealPlanEntry:

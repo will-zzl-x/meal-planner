@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from core.services.flexible_dieting import (
     WeightTrackingService, WeightLog,
-    CalorieBankingService,
+    CalorieBankingService, DailyCalorieTarget, WeeklyDistribution,
     BodyCompositionService,
 )
 
@@ -109,6 +109,93 @@ def test_remaining_calories_calculation():
     assert result["daily_average"] == 2000
 
 
+def test_distribute_weekly_calories_basic_split_within_minimums():
+    service = CalorieBankingService()
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    distribution = service.distribute_weekly_calories(
+        weekly_target=14000,
+        body_weight=Decimal("180"),
+        week_start_date=week_start,
+    )
+    assert len(distribution.daily_targets) == 7
+    # Legacy alias still works for callers that read .target_calories.
+    assert all(t.target_calories == t.final_target for t in distribution.daily_targets)
+    # No special days so no day should fall below the per-pound minimum.
+    minimum = int(Decimal("180") * service.minimum_calories_per_lb)
+    assert all(t.final_target >= minimum for t in distribution.daily_targets)
+
+
+def test_distribute_weekly_calories_marks_restaurant_day():
+    service = CalorieBankingService()
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    friday = week_start + timedelta(days=4)
+    distribution = service.distribute_weekly_calories(
+        weekly_target=14000,
+        body_weight=Decimal("180"),
+        week_start_date=week_start,
+        special_days={friday: "restaurant"},
+    )
+    friday_target = next(t for t in distribution.daily_targets if t.date == friday)
+    assert friday_target.is_special_event
+    # Restaurant day should sit above the simple 14000/7 = 2000 average.
+    assert friday_target.final_target > 2000
+
+
+def test_calculate_banking_impact_under_and_over():
+    service = CalorieBankingService()
+    new_banked, msg = service.calculate_banking_impact(1800, 2000, 0)
+    assert new_banked == 200
+    assert "Banked" in msg
+
+    new_banked, msg = service.calculate_banking_impact(2300, 2000, 200)
+    assert new_banked == -100
+    assert "Used" in msg
+
+
+def test_redistribute_for_special_day_pulls_from_other_days():
+    service = CalorieBankingService()
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    distribution = service.distribute_weekly_calories(
+        weekly_target=14000,
+        body_weight=Decimal("180"),
+        week_start_date=week_start,
+    )
+    friday = week_start + timedelta(days=4)
+    redistributed = service.redistribute_for_special_day(
+        current_distribution=distribution,
+        special_date=friday,
+        estimated_calories=2800,
+        body_weight=Decimal("180"),
+    )
+    friday_target = next(t for t in redistributed.daily_targets if t.date == friday)
+    assert friday_target.final_target == 2800
+    other_totals = [t.final_target for t in redistributed.daily_targets if t.date != friday]
+    # Other days got reduced from their original ~2000 baseline.
+    assert max(other_totals) < 2000
+
+
+def test_validate_distribution_safety_flags_low_days():
+    service = CalorieBankingService()
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    unsafe = WeeklyDistribution(
+        week_start_date=week_start,
+        total_weekly_calories=8400,
+        daily_targets=[
+            DailyCalorieTarget(
+                date=week_start + timedelta(days=i),
+                base_target=1200, banked_calories=0, borrowed_calories=0,
+                final_target=1200,
+            )
+            for i in range(7)
+        ],
+        total_banked=0,
+        total_borrowed=0,
+        is_balanced=True,
+    )
+    warnings = service.validate_distribution_safety(unsafe, Decimal("180"))
+    assert len(warnings) >= 1
+
+
 # --- BodyCompositionService ------------------------------------------------
 
 def test_lean_body_mass_matches_formula():
@@ -136,3 +223,43 @@ def test_body_fat_references_returned():
     refs = service.get_body_fat_references()
     assert len(refs) > 0
     assert all(hasattr(r, 'percentage') for r in refs)
+
+
+def test_assess_body_composition_returns_safe_target():
+    service = BodyCompositionService()
+    result = service.assess_body_composition(
+        body_fat_percentage=Decimal("15"),
+        current_weight=Decimal("180"),
+        activity_level="moderate",
+    )
+    # Must respect 10 cal/lb floor and produce a self-consistent weekly total.
+    assert result.daily_calorie_target >= int(Decimal("180") * 10)
+    assert result.weekly_calorie_target == result.daily_calorie_target * 7
+    assert result.assessment_category in BodyCompositionService.BF_CATEGORIES
+
+
+def test_assess_body_composition_responds_to_activity_level():
+    service = BodyCompositionService()
+    sedentary = service.assess_body_composition(Decimal("20"), Decimal("170"), "sedentary")
+    very_active = service.assess_body_composition(Decimal("20"), Decimal("170"), "very_active")
+    # Higher activity → higher TDEE → higher target (deficit is held constant by category).
+    assert very_active.daily_calorie_target > sedentary.daily_calorie_target
+
+
+def test_get_photo_reference_ranges_keys():
+    service = BodyCompositionService()
+    ranges = service.get_photo_reference_ranges()
+    assert set(ranges.keys()) == {"very_lean", "lean", "average", "soft", "high"}
+
+
+def test_validate_calorie_target_floor_and_ceiling():
+    service = BodyCompositionService()
+    ok, _ = service.validate_calorie_target(2000, Decimal("180"))
+    assert ok is True
+
+    too_low, msg = service.validate_calorie_target(1200, Decimal("180"))
+    assert too_low is False
+    assert "Minimum" in msg
+
+    too_high, msg = service.validate_calorie_target(5000, Decimal("180"))
+    assert too_high is False

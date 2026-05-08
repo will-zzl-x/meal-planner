@@ -1,6 +1,7 @@
 from dataclasses import dataclass
-from typing import Dict, List
+from datetime import date
 from decimal import Decimal
+from typing import Dict, List, Optional
 from .security import (
     validate_ingredient_name, validate_recipe_name, validate_quantity,
     validate_unit, validate_servings, validate_calories, SecurityValidationError
@@ -40,12 +41,31 @@ class InventoryItem:
     name: str
     quantity: Decimal
     unit: str
-    
+    expiration_date: Optional[date] = None
+    purchase_date: Optional[date] = None
+    location: str = "pantry"  # pantry, fridge, freezer
+
     def __post_init__(self):
         """Validate inventory item data on creation."""
         self.name = validate_ingredient_name(self.name)
         self.quantity = validate_quantity(self.quantity)
         self.unit = validate_unit(self.unit)
+
+    @property
+    def days_until_expiration(self) -> Optional[int]:
+        if not self.expiration_date:
+            return None
+        return (self.expiration_date - date.today()).days
+
+    @property
+    def is_expiring_soon(self) -> bool:
+        days = self.days_until_expiration
+        return days is not None and days <= 3
+
+    @property
+    def is_expired(self) -> bool:
+        days = self.days_until_expiration
+        return days is not None and days < 0
 
 @dataclass
 class StoreProfile:
@@ -62,3 +82,23 @@ class GroceryListItem:
     display_amount: str
     actual_need: str
     unit: str
+
+
+@dataclass
+class FoodItem:
+    """Individual food item (not a recipe).
+
+    Macros and calories are expressed per `unit` (e.g. per piece, per scoop, per 100g).
+    Source-tracking fields are optional so this also covers the simpler "planned meal"
+    shape used by the meal planner.
+    """
+    name: str
+    calories_per_unit: int
+    protein_per_unit: Decimal
+    carbs_per_unit: Decimal
+    fats_per_unit: Decimal
+    unit: str
+    category: str  # "food" or "restaurant"
+    source: Optional[str] = None      # Which database provided this item
+    food_id: Optional[str] = None     # Original database ID
+    brand: Optional[str] = None

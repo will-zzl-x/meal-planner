@@ -3,10 +3,16 @@
 
 from .weight_tracking_service import WeightTrackingService, WeightLog, WeightProgress, TDEEEstimate
 from .calorie_banking_service import CalorieBankingService, DailyCalorieTarget, WeeklyDistribution
-from .body_composition_service import BodyCompositionService, BodyFatReference, WeightLossRecommendation
+from .body_composition_service import (
+    BodyCompositionService,
+    BodyFatReference,
+    WeightLossRecommendation,
+    BodyCompositionAssessment,
+)
 
 __all__ = [
     'WeightTrackingService', 'WeightLog', 'WeightProgress', 'TDEEEstimate',
-    'CalorieBankingService', 'DailyCalorieTarget', 'WeeklyDistribution', 
-    'BodyCompositionService', 'BodyFatReference', 'WeightLossRecommendation'
+    'CalorieBankingService', 'DailyCalorieTarget', 'WeeklyDistribution',
+    'BodyCompositionService', 'BodyFatReference', 'WeightLossRecommendation',
+    'BodyCompositionAssessment',
 ]

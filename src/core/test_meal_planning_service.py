@@ -13,8 +13,8 @@ from datetime import date
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-from core.services.meal_planning_service import MealPlanningService, FoodItem
-from core.domain.models import Recipe, Ingredient, InventoryItem
+from core.services.meal_planning_service import MealPlanningService
+from core.domain.models import Recipe, Ingredient, InventoryItem, FoodItem
 
 
 def _recipe(name: str, calories: int, ingredients=None) -> Recipe:

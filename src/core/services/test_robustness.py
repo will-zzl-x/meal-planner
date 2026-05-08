@@ -129,7 +129,7 @@ def _item(name: str, expires_in_days, location="fridge") -> InventoryItem:
     """Build an inventory item with expiration `expires_in_days` from today (None to skip)."""
     exp = date.today() + timedelta(days=expires_in_days) if expires_in_days is not None else None
     return InventoryItem(
-        name=name, quantity=Decimal('1'), unit="unit",
+        name=name, quantity=Decimal('1'), unit="oz",
         expiration_date=exp, purchase_date=date.today(), location=location,
     )
 
@@ -163,7 +163,7 @@ def test_get_expiring_items_includes_already_expired_and_sorts_by_date():
 def test_add_inventory_item_uses_default_shelf_life_when_no_expiration():
     service = SmartInventoryService()
     item = service.add_inventory_item(
-        name="Milk", quantity=Decimal('1'), unit="gallon",
+        name="Milk", quantity=Decimal('1'), unit="cup",
         purchase_date=date(2026, 1, 1),
     )
     # default shelf life for milk is 7 days → 2026-01-08
@@ -174,7 +174,7 @@ def test_add_inventory_item_uses_default_shelf_life_when_no_expiration():
 def test_add_inventory_item_with_unknown_food_has_no_expiration():
     service = SmartInventoryService()
     item = service.add_inventory_item(
-        name="Mystery Sauce", quantity=Decimal('1'), unit="bottle",
+        name="Mystery Sauce", quantity=Decimal('1'), unit="cup",
     )
     assert item.expiration_date is None  # nothing assumed for unknown items
     assert item.location == "pantry"  # default
