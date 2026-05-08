@@ -10,7 +10,7 @@ from decimal import Decimal
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from repositories.sqlite import DatabaseManager
+from repositories.database_manager import DatabaseManager
 from repositories.sqlite.user_repository import SQLiteUserRepository
 from repositories.sqlite.recipe_repository import SQLiteRecipeRepository
 from core.domain.models import Recipe, Ingredient

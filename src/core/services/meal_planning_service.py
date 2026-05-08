@@ -18,13 +18,16 @@ from core.services.flexible_dieting import CalorieBankingService, WeightTracking
 
 @dataclass
 class FoodItem:
-    """Individual food item from database (not a recipe)."""
+    """Individual food item from database (not a recipe).
+
+    Macros and calories are expressed per `unit` (e.g. per piece, per scoop, per 100g).
+    """
     name: str
-    calories_per_100g: int
-    protein_g: Decimal
-    carbs_g: Decimal
-    fat_g: Decimal
-    serving_size: str  # "100g", "1 cup", "1 piece", etc.
+    calories_per_unit: int
+    protein_per_unit: Decimal
+    carbs_per_unit: Decimal
+    fats_per_unit: Decimal
+    unit: str  # "100g", "piece", "cup", "scoop", etc.
     category: str  # "food" or "restaurant"
 
 @dataclass
@@ -357,9 +360,7 @@ class MealPlanningService:
             scaled_recipes.append(recipe)
         
         # Use existing grocery list generation logic
-        aggregated = self._aggregator.aggregate_with_practical_scaling(
-            scaled_recipes, scale_factors, self._scaler
-        )
+        aggregated = self._aggregator.aggregate(scaled_recipes, scale_factors)
         
         # Subtract household inventory
         net_needs = self._inventory_service.subtract_inventory(aggregated, household_inventory)

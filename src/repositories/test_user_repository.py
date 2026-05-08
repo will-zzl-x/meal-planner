@@ -9,7 +9,7 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from repositories.sqlite import DatabaseManager
+from repositories.database_manager import DatabaseManager
 from repositories.sqlite.user_repository import SQLiteUserRepository
 
 def test_user_repository():

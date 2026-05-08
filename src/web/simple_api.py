@@ -44,11 +44,11 @@ def search_foods():
         for food in results:
             foods.append({
                 'name': food.name,
-                'calories_per_100g': food.calories_per_100g,
-                'protein_g': float(food.protein_g),
-                'carbs_g': float(food.carbs_g),
-                'fat_g': float(food.fat_g),
-                'serving_size': food.serving_size,
+                'calories_per_unit': food.calories_per_unit,
+                'protein_per_unit': float(food.protein_per_unit),
+                'carbs_per_unit': float(food.carbs_per_unit),
+                'fats_per_unit': float(food.fats_per_unit),
+                'unit': food.unit,
                 'category': food.category,
                 'source': food.source
             })

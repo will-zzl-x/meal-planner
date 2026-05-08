@@ -1,97 +1,77 @@
-#!/usr/bin/env python3
 """
-Test the User Repository implementation.
+Tests for SQLiteUserRepository — CRUD against the real schema.
 """
 import sys
-import os
+from pathlib import Path
 from decimal import Decimal
 
-# Add src to path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(str(Path(__file__).parent.parent))
 
-# Import directly with relative paths
-import sqlite3
-import uuid
-from typing import Optional
-from core.interfaces.user_repository import UserProfile
-from database_manager import DatabaseManager
+from repositories.sqlite.user_repository import SQLiteUserRepository
 
-def test_user_repository():
-    """Test user repository CRUD operations."""
-    print("🧪 Testing User Repository")
-    print("=" * 30)
-    
-    # Use test database
-    repo = SQLiteUserRepository("test_meal_planner.db")
-    
-    # Test 1: Create user
-    print("1. Creating user...")
+
+def _repo(tmp_path) -> SQLiteUserRepository:
+    return SQLiteUserRepository(str(tmp_path / "users.db"))
+
+
+def test_create_user_returns_profile_with_id_and_name(tmp_path):
+    repo = _repo(tmp_path)
     user = repo.create_user("John Doe", "john@example.com")
-    print(f"   ✅ Created user: {user.name} (ID: {user.user_id[:8]}...)")
-    
-    # Test 2: Find by ID
-    print("2. Finding user by ID...")
-    found_user = repo.find_by_id(user.user_id)
-    if found_user and found_user.name == "John Doe":
-        print(f"   ✅ Found user: {found_user.name}")
-    else:
-        print("   ❌ User not found")
-        return
-    
-    # Test 3: Find by email
-    print("3. Finding user by email...")
-    found_by_email = repo.find_by_email("john@example.com")
-    if found_by_email and found_by_email.user_id == user.user_id:
-        print(f"   ✅ Found user by email: {found_by_email.name}")
-    else:
-        print("   ❌ User not found by email")
-        return
-    
-    # Test 4: Update profile
-    print("4. Updating user profile...")
+
+    assert user.user_id
+    assert user.name == "John Doe"
+    assert user.email == "john@example.com"
+    assert user.current_weight is None
+    assert user.daily_calorie_target is None
+
+
+def test_find_by_id_returns_persisted_user(tmp_path):
+    repo = _repo(tmp_path)
+    created = repo.create_user("Alice", "alice@example.com")
+
+    found = repo.find_by_id(created.user_id)
+    assert found is not None
+    assert found.user_id == created.user_id
+    assert found.name == "Alice"
+
+
+def test_find_by_id_returns_none_for_missing(tmp_path):
+    repo = _repo(tmp_path)
+    assert repo.find_by_id("does-not-exist") is None
+
+
+def test_find_by_email_returns_persisted_user(tmp_path):
+    repo = _repo(tmp_path)
+    created = repo.create_user("Alice", "alice@example.com")
+
+    found = repo.find_by_email("alice@example.com")
+    assert found is not None
+    assert found.user_id == created.user_id
+
+
+def test_update_profile_persists_weight_and_calorie_target(tmp_path):
+    repo = _repo(tmp_path)
+    user = repo.create_user("Bob")
+
     user.current_weight = Decimal("180.5")
     user.body_fat_percentage = Decimal("15.0")
     user.daily_calorie_target = 2000
-    
-    updated_user = repo.update_profile(user)
-    if updated_user.current_weight == Decimal("180.5"):
-        print(f"   ✅ Updated profile: {updated_user.current_weight} lbs, {updated_user.body_fat_percentage}% BF")
-    else:
-        print("   ❌ Profile update failed")
-        return
-    
-    # Test 5: Verify update persisted
-    print("5. Verifying update persisted...")
-    reloaded_user = repo.find_by_id(user.user_id)
-    if reloaded_user and reloaded_user.current_weight == Decimal("180.5"):
-        print(f"   ✅ Update persisted: {reloaded_user.current_weight} lbs")
-    else:
-        print("   ❌ Update did not persist")
-        return
-    
-    # Test 6: Delete user
-    print("6. Deleting user...")
-    deleted = repo.delete_user(user.user_id)
-    if deleted:
-        print("   ✅ User deleted successfully")
-    else:
-        print("   ❌ User deletion failed")
-        return
-    
-    # Test 7: Verify deletion
-    print("7. Verifying deletion...")
-    deleted_user = repo.find_by_id(user.user_id)
-    if deleted_user is None:
-        print("   ✅ User successfully removed from database")
-    else:
-        print("   ❌ User still exists after deletion")
-        return
-    
-    print("\n🎉 All tests passed! User Repository is working correctly.")
-    
-    # Clean up test database
-    os.remove("test_meal_planner.db")
-    print("🧹 Test database cleaned up.")
+    repo.update_profile(user)
 
-if __name__ == "__main__":
-    test_user_repository()
+    reloaded = repo.find_by_id(user.user_id)
+    assert reloaded.current_weight == Decimal("180.5")
+    assert reloaded.body_fat_percentage == Decimal("15.0")
+    assert reloaded.daily_calorie_target == 2000
+
+
+def test_delete_user_removes_record(tmp_path):
+    repo = _repo(tmp_path)
+    user = repo.create_user("ToDelete")
+
+    assert repo.delete_user(user.user_id) is True
+    assert repo.find_by_id(user.user_id) is None
+
+
+def test_delete_user_returns_false_for_missing(tmp_path):
+    repo = _repo(tmp_path)
+    assert repo.delete_user("does-not-exist") is False

@@ -11,13 +11,16 @@ import time
 
 @dataclass
 class FoodItem:
-    """Enhanced food item with database source tracking."""
+    """Enhanced food item with database source tracking.
+
+    Macros and calories are expressed per `unit` (e.g. per piece, per scoop, per 100g).
+    """
     name: str
-    calories_per_100g: int
-    protein_g: Decimal
-    carbs_g: Decimal
-    fat_g: Decimal
-    serving_size: str
+    calories_per_unit: int
+    protein_per_unit: Decimal
+    carbs_per_unit: Decimal
+    fats_per_unit: Decimal
+    unit: str
     category: str  # "food" or "restaurant"
     source: str  # Track which database this came from
     food_id: Optional[str] = None  # Original database ID
@@ -332,7 +335,7 @@ class FoodDatabaseService:
                     fats_per_unit=Decimal(str(fats)),
                     unit="100g",  # USDA data is per 100g
                     category="food",
-                    source_database="usda",
+                    source="usda",
                     food_id=str(food.get("fdcId"))
                 )
                 
@@ -361,11 +364,11 @@ class FoodDatabaseService:
                     
                     foods.append(FoodItem(
                         name=name,
-                        calories_per_100g=calories,
-                        protein_g=protein,
-                        carbs_g=carbs,
-                        fat_g=fat,
-                        serving_size="100g",
+                        calories_per_unit=int(calories),
+                        protein_per_unit=protein,
+                        carbs_per_unit=carbs,
+                        fats_per_unit=fat,
+                        unit="100g",
                         category="food",
                         source="canadian_nutrient_file"
                     ))
@@ -392,11 +395,11 @@ class FoodDatabaseService:
                     
                     foods.append(FoodItem(
                         name=name,
-                        calories_per_100g=calories,
-                        protein_g=protein,
-                        carbs_g=carbs,
-                        fat_g=fat,
-                        serving_size="100g",
+                        calories_per_unit=int(calories),
+                        protein_per_unit=protein,
+                        carbs_per_unit=carbs,
+                        fats_per_unit=fat,
+                        unit="100g",
                         category="food",
                         source="foodb"
                     ))
@@ -424,7 +427,7 @@ class FoodDatabaseService:
                     fats_per_unit=Decimal(str(fats)),
                     unit="100g",
                     category="food",
-                    source_database="openfoodfacts",
+                    source="openfoodfacts",
                     food_id=product.get("code"),
                     brand=product.get("brands")
                 )

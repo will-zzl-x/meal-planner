@@ -144,8 +144,10 @@ class WeightTrackingService:
         total_calories = sum(log.consumed_calories for log in calorie_logs)
         avg_daily_calories = total_calories / len(calorie_logs)
         
-        # Calculate weight change over period
-        weight_change = weight_logs[0].weight - weight_logs[-1].weight
+        # Calculate weight change over period.
+        # Logs are sorted newest-first, so weight_lost = oldest - newest.
+        # Positive weight_lost => deficit => TDEE > consumed.
+        weight_lost = weight_logs[-1].weight - weight_logs[0].weight
         days_span = (weight_logs[0].date - weight_logs[-1].date).days
         
         if days_span == 0:
@@ -157,7 +159,7 @@ class WeightTrackingService:
         # Calculate implied TDEE
         # If losing weight: TDEE = avg_calories + (weight_lost * 3500 / days)
         # If gaining weight: TDEE = avg_calories - (weight_gained * 3500 / days)
-        daily_calorie_deficit = float(weight_change * calories_per_pound) / days_span
+        daily_calorie_deficit = float(weight_lost * calories_per_pound) / days_span
         estimated_tdee = int(avg_daily_calories + daily_calorie_deficit)
         
         # Determine confidence level

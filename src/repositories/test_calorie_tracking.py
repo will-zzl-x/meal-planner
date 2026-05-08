@@ -11,7 +11,7 @@ from datetime import date, timedelta
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from repositories.sqlite import DatabaseManager
+from repositories.database_manager import DatabaseManager
 from repositories.sqlite.user_repository import SQLiteUserRepository
 from repositories.sqlite.calorie_tracking_repository import SQLiteCalorieTrackingRepository
 from core.interfaces.calorie_tracking_repository import DailyCalorieLog, WeeklyCaloriePlan

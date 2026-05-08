@@ -8,8 +8,8 @@ from typing import List, Optional
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from ..core.interfaces.calorie_tracking_repository import ICalorieTrackingRepository, DailyCalorieLog, WeeklyCaloriePlan
-from ..database_manager import DatabaseManager
+from core.interfaces.calorie_tracking_repository import ICalorieTrackingRepository, DailyCalorieLog, WeeklyCaloriePlan
+from repositories.database_manager import DatabaseManager
 
 class SQLiteCalorieTrackingRepository(ICalorieTrackingRepository):
     """SQLite implementation of calorie tracking data access."""
