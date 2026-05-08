@@ -9,17 +9,14 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from core.interfaces.calorie_tracking_repository import ICalorieTrackingRepository, DailyCalorieLog, WeeklyCaloriePlan
-from repositories.database_manager import DatabaseManager
+from repositories.sqlite.database import DatabaseManager
 
 class SQLiteCalorieTrackingRepository(ICalorieTrackingRepository):
     """SQLite implementation of calorie tracking data access."""
-    
+
     def __init__(self, db_path: str = "meal_planner.db"):
         self.db_manager = DatabaseManager(db_path)
-        
-        # Initialize database if it doesn't exist
-        if not self.db_manager.check_database_exists():
-            self.db_manager.initialize_database()
+        self.db_manager.initialize_database()  # idempotent
     
     def log_daily_calories(self, log: DailyCalorieLog) -> DailyCalorieLog:
         """Log daily calorie consumption with banking."""
