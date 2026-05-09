@@ -30,7 +30,9 @@ from core.services.auth_service import (  # noqa: E402
     EmailAlreadyRegisteredError,
     HouseholdNotFoundError,
 )
+from core.services.flexible_dieting import BodyCompositionService  # noqa: E402
 from core.services.grocery_list_service import GroceryListService  # noqa: E402
+from repositories.sqlite.food_log_repository import SQLiteFoodLogRepository  # noqa: E402
 from repositories.sqlite.household_repository import SQLiteHouseholdRepository  # noqa: E402
 from repositories.sqlite.inventory_repository import SQLiteInventoryRepository  # noqa: E402
 from repositories.sqlite.meal_plan_repository import SQLiteMealPlanRepository  # noqa: E402
@@ -74,6 +76,21 @@ def get_meal_plan_repo() -> SQLiteMealPlanRepository:
 @st.cache_resource
 def get_grocery_service() -> GroceryListService:
     return GroceryListService()
+
+
+@st.cache_resource
+def get_food_log_repo() -> SQLiteFoodLogRepository:
+    return SQLiteFoodLogRepository(DB_PATH)
+
+
+@st.cache_resource
+def get_user_repo() -> SQLiteUserRepository:
+    return SQLiteUserRepository(DB_PATH)
+
+
+@st.cache_resource
+def get_body_composition_service() -> BodyCompositionService:
+    return BodyCompositionService()
 
 
 # --- Auth screens ---------------------------------------------------------
@@ -191,16 +208,6 @@ def _render_sidebar() -> None:
             st.rerun()
 
 
-def home_page() -> None:
-    _render_sidebar()
-    user = st.session_state.user
-    st.title(f"Welcome, {user.name}")
-    st.write(
-        "Use the sidebar to navigate. The Today / Weekly Plan / Grocery / "
-        "Profile screens are still on the way."
-    )
-
-
 def recipes_page_entry() -> None:
     from web.views import recipes
     _render_sidebar()
@@ -231,13 +238,26 @@ def grocery_list_page_entry() -> None:
     )
 
 
+def today_page_entry() -> None:
+    from web.views import today
+    _render_sidebar()
+    today.render(st.session_state.user, get_meal_plan_repo(), get_food_log_repo())
+
+
+def profile_page_entry() -> None:
+    from web.views import profile
+    _render_sidebar()
+    profile.render(st.session_state.user, get_user_repo(), get_body_composition_service())
+
+
 def render_authenticated() -> None:
     pages = [
-        st.Page(home_page, title="Home", icon=":material/home:", default=True),
+        st.Page(today_page_entry, title="Today", icon=":material/today:", default=True),
         st.Page(weekly_plan_page_entry, title="Weekly Plan", icon=":material/calendar_month:"),
         st.Page(grocery_list_page_entry, title="Grocery List", icon=":material/shopping_cart:"),
         st.Page(recipes_page_entry, title="Recipes", icon=":material/menu_book:"),
         st.Page(pantry_page_entry, title="Pantry", icon=":material/kitchen:"),
+        st.Page(profile_page_entry, title="My Profile", icon=":material/person:"),
     ]
     pg = st.navigation(pages)
     pg.run()

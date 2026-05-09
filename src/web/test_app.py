@@ -20,6 +20,9 @@ def test_app_module_imports_cleanly():
         "get_inventory_repo",
         "get_meal_plan_repo",
         "get_grocery_service",
+        "get_food_log_repo",
+        "get_user_repo",
+        "get_body_composition_service",
         "render_login_form",
         "render_register_household_form",
         "render_register_member_form",
@@ -27,6 +30,8 @@ def test_app_module_imports_cleanly():
         "render_authenticated",
         "weekly_plan_page_entry",
         "grocery_list_page_entry",
+        "today_page_entry",
+        "profile_page_entry",
         "main",
     ):
         assert hasattr(module, attr), f"app.py missing entry point: {attr}"
