@@ -30,8 +30,10 @@ from core.services.auth_service import (  # noqa: E402
     EmailAlreadyRegisteredError,
     HouseholdNotFoundError,
 )
+from core.services.grocery_list_service import GroceryListService  # noqa: E402
 from repositories.sqlite.household_repository import SQLiteHouseholdRepository  # noqa: E402
 from repositories.sqlite.inventory_repository import SQLiteInventoryRepository  # noqa: E402
+from repositories.sqlite.meal_plan_repository import SQLiteMealPlanRepository  # noqa: E402
 from repositories.sqlite.recipe_repository import SQLiteRecipeRepository  # noqa: E402
 from repositories.sqlite.user_repository import SQLiteUserRepository  # noqa: E402
 
@@ -62,6 +64,16 @@ def get_inventory_repo() -> SQLiteInventoryRepository:
 @st.cache_resource
 def get_household_repo() -> SQLiteHouseholdRepository:
     return SQLiteHouseholdRepository(DB_PATH)
+
+
+@st.cache_resource
+def get_meal_plan_repo() -> SQLiteMealPlanRepository:
+    return SQLiteMealPlanRepository(DB_PATH)
+
+
+@st.cache_resource
+def get_grocery_service() -> GroceryListService:
+    return GroceryListService()
 
 
 # --- Auth screens ---------------------------------------------------------
@@ -201,9 +213,29 @@ def pantry_page_entry() -> None:
     pantry.render(st.session_state.user, get_inventory_repo())
 
 
+def weekly_plan_page_entry() -> None:
+    from web.views import weekly_plan
+    _render_sidebar()
+    weekly_plan.render(st.session_state.user, get_meal_plan_repo(), get_recipe_repo())
+
+
+def grocery_list_page_entry() -> None:
+    from web.views import grocery_list
+    _render_sidebar()
+    grocery_list.render(
+        st.session_state.user,
+        get_meal_plan_repo(),
+        get_recipe_repo(),
+        get_inventory_repo(),
+        get_grocery_service(),
+    )
+
+
 def render_authenticated() -> None:
     pages = [
         st.Page(home_page, title="Home", icon=":material/home:", default=True),
+        st.Page(weekly_plan_page_entry, title="Weekly Plan", icon=":material/calendar_month:"),
+        st.Page(grocery_list_page_entry, title="Grocery List", icon=":material/shopping_cart:"),
         st.Page(recipes_page_entry, title="Recipes", icon=":material/menu_book:"),
         st.Page(pantry_page_entry, title="Pantry", icon=":material/kitchen:"),
     ]
