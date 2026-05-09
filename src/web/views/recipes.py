@@ -40,13 +40,35 @@ def _render_recipe_list(user: UserProfile, repo: SQLiteRecipeRepository) -> None
         return
 
     for recipe in recipes:
-        with st.expander(f"**{recipe.name}** — {recipe.calories_per_serving} cal/serving · serves {recipe.base_servings}"):
+        tier_chip = f"[{recipe.tier}] " if recipe.tier else ""
+        cal_label = f"{recipe.calories_per_serving} cal/serving" if recipe.calories_per_serving else "calories TBD"
+        header = f"**{tier_chip}{recipe.name}** — {cal_label} · serves {recipe.base_servings}"
+        with st.expander(header):
+            st.markdown("**Ingredients**")
             for ing in recipe.ingredients:
-                st.write(f"- {ing.quantity} {ing.unit} {ing.name}")
+                store_chip = f" `{ing.store}`" if ing.store else ""
+                if ing.quantity == 0:
+                    st.write(f"- {ing.name}{store_chip}")
+                else:
+                    qty_str = _format_quantity(ing.quantity)
+                    st.write(f"- {qty_str} {ing.unit} {ing.name}{store_chip}")
+            if recipe.instructions:
+                st.markdown("**Instructions**")
+                for i, step in enumerate(recipe.instructions, start=1):
+                    st.write(f"{i}. {step}")
+            if recipe.notes:
+                st.markdown("**Notes**")
+                st.caption(recipe.notes)
             if user.is_planner:
                 if st.button("Delete", key=f"delete-{recipe.name}", type="secondary"):
                     repo.delete_by_name(recipe.name, user.household_id)
                     st.rerun()
+
+
+def _format_quantity(qty: Decimal) -> str:
+    """Render a Decimal without trailing zeros."""
+    normalized = qty.normalize()
+    return f"{normalized:f}" if normalized == normalized.to_integral_value() else str(normalized)
 
 
 def _render_add_recipe_form(user: UserProfile, repo: SQLiteRecipeRepository) -> None:

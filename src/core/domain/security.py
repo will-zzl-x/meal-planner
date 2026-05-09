@@ -7,10 +7,18 @@ from decimal import Decimal, InvalidOperation
 from typing import List, Optional
 
 # Security constants
-ALLOWED_INGREDIENT_CHARS = re.compile(r'^[a-zA-Z0-9\s\-_]+$')
+# Allow letters, digits, whitespace, and common cooking-name punctuation.
+# Excludes characters that could carry SQL or HTML payloads (`;`, `<`, `>`,
+# `"`, `\`, backticks).
+ALLOWED_INGREDIENT_CHARS = re.compile(r"^[\w\s\-,.()+&/'%*~]+$")
 MAX_INGREDIENT_NAME_LENGTH = 100
 MAX_RECIPE_NAME_LENGTH = 200
-ALLOWED_UNITS = {'oz', 'lb', 'cup', 'tbsp', 'tsp', 'cloves', 'medium', 'large', 'small', 'scoop', 'whole'}
+# Units are validated permissively rather than against a whitelist: real cooking
+# uses many unit names (thigh, pack, sprig, can, lemon, ...) and forcing them
+# into a fixed list rejects perfectly reasonable input. Same character-class
+# protections (no quotes, semicolons, etc.) remain.
+ALLOWED_UNIT_CHARS = re.compile(r'^[a-zA-Z0-9\s\-_./]+$')
+MAX_UNIT_LENGTH = 30
 
 class SecurityValidationError(Exception):
     """Raised when security validation fails."""
@@ -68,15 +76,18 @@ def validate_quantity(quantity) -> Decimal:
         raise SecurityValidationError("Invalid quantity format")
 
 def validate_unit(unit: str) -> str:
-    """Validate unit against whitelist."""
+    """Validate unit (permissive: any alphanumeric/space/hyphen/dot/slash up to 30 chars)."""
     if not unit or not isinstance(unit, str):
         raise SecurityValidationError("Unit is required")
-    
+
     unit = unit.strip().lower()
-    
-    if unit not in ALLOWED_UNITS:
-        raise SecurityValidationError(f"Invalid unit. Allowed: {', '.join(ALLOWED_UNITS)}")
-    
+
+    if len(unit) > MAX_UNIT_LENGTH:
+        raise SecurityValidationError(f"Unit too long (max {MAX_UNIT_LENGTH} chars)")
+
+    if not ALLOWED_UNIT_CHARS.match(unit):
+        raise SecurityValidationError("Unit contains invalid characters")
+
     return unit
 
 def validate_servings(servings) -> int:

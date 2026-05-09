@@ -4,8 +4,10 @@ SQLite implementation of Recipe Repository.
 Recipes are owned by a household (per migration 003), with `created_by_user_id`
 recording the household member who added them. Ingredient nutrition lives in
 the `ingredients` catalog (per migration 005); recipes link to it through the
-`recipe_ingredients` join table.
+`recipe_ingredients` join table. Instructions are stored as a JSON array in a
+single TEXT column so individual steps can contain any characters.
 """
+import json
 import uuid
 from decimal import Decimal
 from typing import List, Optional
@@ -13,6 +15,22 @@ from typing import List, Optional
 from core.interfaces.recipe_repository import IRecipeRepository
 from core.domain.models import Recipe, Ingredient
 from repositories.sqlite.database import DatabaseManager
+
+
+def _serialize_instructions(steps: List[str]) -> str:
+    return json.dumps(steps or [])
+
+
+def _deserialize_instructions(raw: Optional[str]) -> List[str]:
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        # Legacy rows wrote an empty string for instructions; treat any
+        # non-JSON value as "no steps recorded" rather than crashing.
+        return []
+    return value if isinstance(value, list) else []
 
 
 class SQLiteRecipeRepository(IRecipeRepository):
@@ -52,21 +70,25 @@ class SQLiteRecipeRepository(IRecipeRepository):
             cursor.execute(
                 """
                 INSERT INTO recipes (id, household_id, name, base_servings,
-                                     calories_per_serving, created_by_user_id, instructions)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                     calories_per_serving, created_by_user_id,
+                                     instructions, notes, tier)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (recipe_id, household_id, recipe.name, recipe.base_servings,
-                 recipe.calories_per_serving, created_by_user_id, ""),
+                 recipe.calories_per_serving, created_by_user_id,
+                 _serialize_instructions(recipe.instructions),
+                 recipe.notes, recipe.tier),
             )
 
             for ingredient_id, ingredient in ingredient_ids:
                 cursor.execute(
                     """
-                    INSERT INTO recipe_ingredients (id, recipe_id, ingredient_id, quantity, unit)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO recipe_ingredients
+                        (id, recipe_id, ingredient_id, quantity, unit, store)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (str(uuid.uuid4()), recipe_id, ingredient_id,
-                     float(ingredient.quantity), ingredient.unit),
+                     float(ingredient.quantity), ingredient.unit, ingredient.store),
                 )
 
             conn.commit()
@@ -77,6 +99,9 @@ class SQLiteRecipeRepository(IRecipeRepository):
             base_servings=recipe.base_servings,
             calories_per_serving=recipe.calories_per_serving,
             id=recipe_id,
+            instructions=list(recipe.instructions),
+            notes=recipe.notes,
+            tier=recipe.tier,
         )
 
     def find_by_id(self, recipe_id: str, household_id: str) -> Optional[Recipe]:
@@ -84,7 +109,8 @@ class SQLiteRecipeRepository(IRecipeRepository):
             cursor = conn.cursor()
             recipe_row = cursor.execute(
                 """
-                SELECT id, name, base_servings, calories_per_serving
+                SELECT id, name, base_servings, calories_per_serving,
+                       instructions, notes, tier
                 FROM recipes
                 WHERE id = ? AND household_id = ?
                 """,
@@ -99,7 +125,8 @@ class SQLiteRecipeRepository(IRecipeRepository):
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT id, name, base_servings, calories_per_serving
+                SELECT id, name, base_servings, calories_per_serving,
+                       instructions, notes, tier
                 FROM recipes
                 WHERE household_id = ?
                 ORDER BY created_at DESC
@@ -140,7 +167,8 @@ class SQLiteRecipeRepository(IRecipeRepository):
             cursor = conn.cursor()
             row = cursor.execute(
                 """
-                SELECT id, name, base_servings, calories_per_serving
+                SELECT id, name, base_servings, calories_per_serving,
+                       instructions, notes, tier
                 FROM recipes
                 WHERE name = ? AND household_id = ?
                 """,
@@ -153,7 +181,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
     def _build_recipe(self, cursor, recipe_row) -> Recipe:
         cursor.execute(
             """
-            SELECT i.name, ri.quantity, ri.unit
+            SELECT i.name, ri.quantity, ri.unit, ri.store
             FROM recipe_ingredients ri
             JOIN ingredients i ON ri.ingredient_id = i.id
             WHERE ri.recipe_id = ?
@@ -165,6 +193,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 name=ing['name'],
                 quantity=Decimal(str(ing['quantity'])),
                 unit=ing['unit'],
+                store=ing['store'],
             )
             for ing in cursor.fetchall()
         ]
@@ -174,4 +203,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             base_servings=recipe_row['base_servings'],
             calories_per_serving=recipe_row['calories_per_serving'],
             id=recipe_row['id'],
+            instructions=_deserialize_instructions(recipe_row['instructions']),
+            notes=recipe_row['notes'],
+            tier=recipe_row['tier'],
         )

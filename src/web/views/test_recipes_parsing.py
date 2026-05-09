@@ -33,9 +33,11 @@ def test_rejects_non_numeric_quantity():
         _parse_ingredients("chicken breast, lots, oz")
 
 
-def test_rejects_invalid_unit():
+def test_rejects_unit_with_invalid_characters():
+    # The validator is permissive about unit names but still rejects characters
+    # that could carry SQL or HTML payloads.
     with pytest.raises(ValueError, match="Line 1"):
-        _parse_ingredients("chicken breast, 6, kilograms")
+        _parse_ingredients("chicken breast, 6, ;DROP TABLE")
 
 
 def test_empty_input_raises():

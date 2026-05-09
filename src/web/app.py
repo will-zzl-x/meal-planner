@@ -50,6 +50,7 @@ def get_auth_service() -> AuthService:
     return AuthService(
         user_repo=SQLiteUserRepository(DB_PATH),
         household_repo=SQLiteHouseholdRepository(DB_PATH),
+        recipe_repo=SQLiteRecipeRepository(DB_PATH),  # auto-seeds new households
     )
 
 

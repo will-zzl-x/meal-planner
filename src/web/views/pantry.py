@@ -13,8 +13,8 @@ from core.interfaces.user_repository import UserProfile
 from repositories.sqlite.inventory_repository import SQLiteInventoryRepository
 
 
-# Mirrors ALLOWED_UNITS in core/domain/security.py — kept here as a stable
-# selectbox order. The validator will still gate on the canonical set.
+# Common pantry unit options (selectbox order). The unit validator is now
+# permissive, so anything alphanumeric works — these are just the easy picks.
 _UNIT_OPTIONS = ["oz", "lb", "cup", "tbsp", "tsp", "cloves",
                  "small", "medium", "large", "scoop", "whole"]
 

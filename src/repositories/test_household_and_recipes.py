@@ -83,6 +83,36 @@ def test_recipes_are_isolated_per_household(tmp_path):
     assert jones_names == {"Jones special"}
 
 
+def test_recipe_metadata_roundtrips(tmp_path):
+    """Recipe.instructions / notes / tier and Ingredient.store all persist."""
+    households, users, recipes = _setup(tmp_path)
+    h = households.create("Smiths")
+    alice = users.create_user("Alice", "a@example.com", household_id=h.id, is_planner=True)
+
+    rich = Recipe(
+        name="Tagged recipe",
+        ingredients=[
+            Ingredient(name="chicken breast", quantity=Decimal("6"), unit="oz", store="Costco"),
+            Ingredient(name="rice", quantity=Decimal("1"), unit="cup", store="Walmart"),
+        ],
+        base_servings=1,
+        calories_per_serving=400,
+        instructions=["Chop everything", "Cook it"],
+        notes="A note with [chips] and full sentences.",
+        tier="A",
+    )
+    recipes.save(rich, household_id=h.id, created_by_user_id=alice.user_id)
+
+    reloaded = recipes.find_by_name("Tagged recipe", household_id=h.id)
+    assert reloaded is not None
+    assert reloaded.tier == "A"
+    assert reloaded.notes == "A note with [chips] and full sentences."
+    assert reloaded.instructions == ["Chop everything", "Cook it"]
+    by_name = {ing.name: ing for ing in reloaded.ingredients}
+    assert by_name["chicken breast"].store == "Costco"
+    assert by_name["rice"].store == "Walmart"
+
+
 def test_user_password_and_planner_flag_persist(tmp_path):
     households, users, _ = _setup(tmp_path)
     h = households.create("The Smiths")

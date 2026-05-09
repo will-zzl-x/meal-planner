@@ -6,12 +6,14 @@ import pytest
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from core.seed_recipes import all_seed_recipes
 from core.services.auth_service import (
     AuthService,
     EmailAlreadyRegisteredError,
     HouseholdNotFoundError,
 )
 from repositories.sqlite.household_repository import SQLiteHouseholdRepository
+from repositories.sqlite.recipe_repository import SQLiteRecipeRepository
 from repositories.sqlite.user_repository import SQLiteUserRepository
 
 
@@ -26,6 +28,18 @@ def _service(tmp_path) -> AuthService:
         household_repo=SQLiteHouseholdRepository(db),
         hash_iterations=_FAST_ITERATIONS,
     )
+
+
+def _service_with_seeding(tmp_path):
+    db = str(tmp_path / "auth.db")
+    recipes = SQLiteRecipeRepository(db)
+    svc = AuthService(
+        user_repo=SQLiteUserRepository(db),
+        household_repo=SQLiteHouseholdRepository(db),
+        recipe_repo=recipes,
+        hash_iterations=_FAST_ITERATIONS,
+    )
+    return svc, recipes
 
 
 def test_register_household_creates_household_and_planner(tmp_path):
@@ -92,6 +106,26 @@ def test_login_fails_with_wrong_password(tmp_path):
 def test_login_fails_for_unknown_email(tmp_path):
     svc = _service(tmp_path)
     assert svc.login("nobody@example.com", "anything") is None
+
+
+def test_register_household_seeds_recipes_when_recipe_repo_supplied(tmp_path):
+    svc, recipes = _service_with_seeding(tmp_path)
+    result = svc.register_household("Alice", "alice@example.com", "pw", "Smiths")
+
+    seeded = recipes.find_all_by_household(result.household.id)
+    expected = all_seed_recipes()
+    assert len(seeded) == len(expected)
+    assert {r.name for r in seeded} == {r.name for r in expected}
+
+
+def test_register_household_skips_seeding_when_no_recipe_repo(tmp_path):
+    svc = _service(tmp_path)  # constructed without recipe_repo
+    result = svc.register_household("Alice", "alice@example.com", "pw", "Smiths")
+
+    # The user is still in a household; nothing is seeded.
+    db = str(tmp_path / "auth.db")
+    recipes_for_check = SQLiteRecipeRepository(db)
+    assert recipes_for_check.find_all_by_household(result.household.id) == []
 
 
 def test_login_fails_for_user_without_password_hash(tmp_path):
