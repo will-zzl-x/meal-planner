@@ -108,6 +108,17 @@ class SQLiteRecipeRepository(IRecipeRepository):
             recipe_rows = cursor.fetchall()
             return [self._build_recipe(cursor, row['id'], row) for row in recipe_rows]
 
+    def delete_by_name(self, name: str, household_id: str) -> bool:
+        """Delete a recipe by its name within a household. Convenience for the V1 UI,
+        which doesn't surface recipe IDs."""
+        with self.db_manager.get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM recipes WHERE name = ? AND household_id = ?",
+                (name, household_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
     def delete(self, recipe_id: str, household_id: str) -> bool:
         with self.db_manager.get_connection() as conn:
             cursor = conn.execute(

@@ -1,0 +1,112 @@
+"""
+SQLite implementation of Inventory Repository.
+
+Inventory rows are scoped to a household (per migration 002). Each
+(household_id, ingredient_name, unit) is unique, so adding the "same" item
+twice updates the existing row's quantity rather than creating a duplicate.
+
+Note: the V1 schema only persists name + quantity + unit. The optional
+`expiration_date`, `purchase_date`, and `location` fields on the domain
+InventoryItem are not stored yet — they round-trip as None / defaults.
+"""
+import uuid
+from decimal import Decimal
+from typing import List
+
+from core.domain.models import InventoryItem
+from core.interfaces.inventory_repository import IInventoryRepository
+from repositories.sqlite.database import DatabaseManager
+
+
+class SQLiteInventoryRepository(IInventoryRepository):
+    """SQLite implementation of household inventory data access."""
+
+    def __init__(self, db_path: str = "meal_planner.db"):
+        self.db_manager = DatabaseManager(db_path)
+        self.db_manager.initialize_database()  # idempotent
+
+    def get_household_inventory(self, household_id: str) -> List[InventoryItem]:
+        with self.db_manager.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT ingredient_name, quantity, unit
+                FROM inventory
+                WHERE household_id = ?
+                ORDER BY ingredient_name
+                """,
+                (household_id,),
+            )
+            return [
+                InventoryItem(
+                    name=row['ingredient_name'],
+                    quantity=Decimal(str(row['quantity'])),
+                    unit=row['unit'],
+                )
+                for row in cursor.fetchall()
+            ]
+
+    def update_household_inventory(self, household_id: str,
+                                   items: List[InventoryItem]) -> None:
+        """Replace the household's full inventory in a single transaction."""
+        with self.db_manager.get_connection() as conn:
+            conn.execute("DELETE FROM inventory WHERE household_id = ?", (household_id,))
+            for item in items:
+                conn.execute(
+                    """
+                    INSERT INTO inventory (id, household_id, ingredient_name, quantity, unit)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (str(uuid.uuid4()), household_id, item.name,
+                     float(item.quantity), item.unit),
+                )
+            conn.commit()
+
+    def add_inventory_item(self, household_id: str,
+                           item: InventoryItem) -> InventoryItem:
+        """Insert the item, or replace the quantity if (name, unit) already exists."""
+        with self.db_manager.get_connection() as conn:
+            existing = conn.execute(
+                """
+                SELECT id FROM inventory
+                WHERE household_id = ? AND ingredient_name = ? AND unit = ?
+                """,
+                (household_id, item.name, item.unit),
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE inventory
+                    SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (float(item.quantity), existing['id']),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO inventory (id, household_id, ingredient_name, quantity, unit)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (str(uuid.uuid4()), household_id, item.name,
+                     float(item.quantity), item.unit),
+                )
+            conn.commit()
+        return item
+
+    def remove_inventory_item(self, household_id: str,
+                              ingredient_name: str, unit: str) -> bool:
+        with self.db_manager.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM inventory
+                WHERE household_id = ? AND ingredient_name = ? AND unit = ?
+                """,
+                (household_id, ingredient_name, unit),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def clear_household_inventory(self, household_id: str) -> None:
+        with self.db_manager.get_connection() as conn:
+            conn.execute("DELETE FROM inventory WHERE household_id = ?", (household_id,))
+            conn.commit()

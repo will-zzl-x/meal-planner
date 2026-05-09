@@ -1,12 +1,15 @@
 """
-Streamlit V1 entry point — login / register / logout, with an empty home
-placeholder for now. Run with:
+Streamlit V1 entry point. Run with:
 
     streamlit run src/web/app.py
 
 Database location is read from the MEAL_PLANNER_DB env var (default:
-meal_planner.db in the current directory). The repository constructors
-create the file and apply migrations the first time the app starts.
+meal_planner.db). The repository constructors create the file and apply
+migrations the first time the app starts.
+
+Routing:
+- Logged out → tabbed auth screen (login / start household / join household).
+- Logged in  → multipage app via st.navigation, with sidebar log-out.
 
 Session state:
 - user: UserProfile when logged in; absent otherwise.
@@ -22,29 +25,48 @@ import streamlit as st
 # Make sibling packages importable when running via `streamlit run src/web/app.py`.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.services.auth_service import (  # noqa: E402  (must come after sys.path tweak)
+from core.services.auth_service import (  # noqa: E402
     AuthService,
     EmailAlreadyRegisteredError,
     HouseholdNotFoundError,
 )
 from repositories.sqlite.household_repository import SQLiteHouseholdRepository  # noqa: E402
+from repositories.sqlite.inventory_repository import SQLiteInventoryRepository  # noqa: E402
+from repositories.sqlite.recipe_repository import SQLiteRecipeRepository  # noqa: E402
 from repositories.sqlite.user_repository import SQLiteUserRepository  # noqa: E402
 
 
 DB_PATH = os.environ.get("MEAL_PLANNER_DB", "meal_planner.db")
 
 
+# --- Cached singletons ----------------------------------------------------
+
 @st.cache_resource
 def get_auth_service() -> AuthService:
-    """Build AuthService once per Streamlit process (cached across reruns)."""
     return AuthService(
         user_repo=SQLiteUserRepository(DB_PATH),
         household_repo=SQLiteHouseholdRepository(DB_PATH),
     )
 
 
+@st.cache_resource
+def get_recipe_repo() -> SQLiteRecipeRepository:
+    return SQLiteRecipeRepository(DB_PATH)
+
+
+@st.cache_resource
+def get_inventory_repo() -> SQLiteInventoryRepository:
+    return SQLiteInventoryRepository(DB_PATH)
+
+
+@st.cache_resource
+def get_household_repo() -> SQLiteHouseholdRepository:
+    return SQLiteHouseholdRepository(DB_PATH)
+
+
+# --- Auth screens ---------------------------------------------------------
+
 def _missing_fields(fields: dict) -> list:
-    """Return labels of any blank fields, for a single 'please fill in X, Y' error."""
     return [label for label, value in fields.items() if not value]
 
 
@@ -83,10 +105,8 @@ def render_register_household_form() -> None:
     if not submit:
         return
     missing = _missing_fields({
-        "Name": planner_name,
-        "Household name": household_name,
-        "Email": email,
-        "Password": password,
+        "Name": planner_name, "Household name": household_name,
+        "Email": email, "Password": password,
     })
     if missing:
         st.error(f"Please fill in: {', '.join(missing)}")
@@ -147,7 +167,9 @@ def render_unauthenticated() -> None:
         render_register_member_form()
 
 
-def render_authenticated() -> None:
+# --- Authenticated shell --------------------------------------------------
+
+def _render_sidebar() -> None:
     user = st.session_state.user
     with st.sidebar:
         st.write(f"**{user.name}**")
@@ -155,12 +177,41 @@ def render_authenticated() -> None:
         if st.button("Log out"):
             del st.session_state.user
             st.rerun()
+
+
+def home_page() -> None:
+    _render_sidebar()
+    user = st.session_state.user
     st.title(f"Welcome, {user.name}")
-    st.info(
-        "The rest of the app will live here in the next slice "
-        "(recipes, pantry, weekly plan, today, etc.)."
+    st.write(
+        "Use the sidebar to navigate. The Today / Weekly Plan / Grocery / "
+        "Profile screens are still on the way."
     )
 
+
+def recipes_page_entry() -> None:
+    from web.views import recipes
+    _render_sidebar()
+    recipes.render(st.session_state.user, get_recipe_repo())
+
+
+def pantry_page_entry() -> None:
+    from web.views import pantry
+    _render_sidebar()
+    pantry.render(st.session_state.user, get_inventory_repo())
+
+
+def render_authenticated() -> None:
+    pages = [
+        st.Page(home_page, title="Home", icon=":material/home:", default=True),
+        st.Page(recipes_page_entry, title="Recipes", icon=":material/menu_book:"),
+        st.Page(pantry_page_entry, title="Pantry", icon=":material/kitchen:"),
+    ]
+    pg = st.navigation(pages)
+    pg.run()
+
+
+# --- Entry ---------------------------------------------------------------
 
 def main() -> None:
     st.set_page_config(page_title="Meal Planner", layout="centered")
