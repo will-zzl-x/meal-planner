@@ -25,13 +25,14 @@ class Recipe:
     ingredients: List[Ingredient]
     base_servings: int
     calories_per_serving: int
-    
+    id: Optional[str] = None  # Populated by repository reads; None for unsaved.
+
     def __post_init__(self):
         """Validate recipe data on creation."""
         self.name = validate_recipe_name(self.name)
         self.base_servings = validate_servings(self.base_servings)
         self.calories_per_serving = validate_calories(self.calories_per_serving)
-        
+
         # Validate ingredients list
         if not self.ingredients:
             raise SecurityValidationError("Recipe must have at least one ingredient")

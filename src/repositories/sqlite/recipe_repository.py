@@ -76,6 +76,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             ingredients=recipe.ingredients,
             base_servings=recipe.base_servings,
             calories_per_serving=recipe.calories_per_serving,
+            id=recipe_id,
         )
 
     def find_by_id(self, recipe_id: str, household_id: str) -> Optional[Recipe]:
@@ -83,7 +84,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             cursor = conn.cursor()
             recipe_row = cursor.execute(
                 """
-                SELECT name, base_servings, calories_per_serving
+                SELECT id, name, base_servings, calories_per_serving
                 FROM recipes
                 WHERE id = ? AND household_id = ?
                 """,
@@ -91,7 +92,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             ).fetchone()
             if not recipe_row:
                 return None
-            return self._build_recipe(cursor, recipe_id, recipe_row)
+            return self._build_recipe(cursor, recipe_row)
 
     def find_all_by_household(self, household_id: str) -> List[Recipe]:
         with self.db_manager.get_connection() as conn:
@@ -106,7 +107,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 (household_id,),
             )
             recipe_rows = cursor.fetchall()
-            return [self._build_recipe(cursor, row['id'], row) for row in recipe_rows]
+            return [self._build_recipe(cursor, row) for row in recipe_rows]
 
     def delete_by_name(self, name: str, household_id: str) -> bool:
         """Delete a recipe by its name within a household. Convenience for the V1 UI,
@@ -147,9 +148,9 @@ class SQLiteRecipeRepository(IRecipeRepository):
             ).fetchone()
             if not row:
                 return None
-            return self._build_recipe(cursor, row['id'], row)
+            return self._build_recipe(cursor, row)
 
-    def _build_recipe(self, cursor, recipe_id: str, recipe_row) -> Recipe:
+    def _build_recipe(self, cursor, recipe_row) -> Recipe:
         cursor.execute(
             """
             SELECT i.name, ri.quantity, ri.unit
@@ -157,7 +158,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             JOIN ingredients i ON ri.ingredient_id = i.id
             WHERE ri.recipe_id = ?
             """,
-            (recipe_id,),
+            (recipe_row['id'],),
         )
         ingredients = [
             Ingredient(
@@ -172,4 +173,5 @@ class SQLiteRecipeRepository(IRecipeRepository):
             ingredients=ingredients,
             base_servings=recipe_row['base_servings'],
             calories_per_serving=recipe_row['calories_per_serving'],
+            id=recipe_row['id'],
         )
