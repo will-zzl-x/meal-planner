@@ -46,25 +46,9 @@ class SQLiteRecipeRepository(IRecipeRepository):
         with self.db_manager.get_connection() as conn:
             cursor = conn.cursor()
 
-            # Upsert each ingredient into the catalog (zero nutrition for unknown ones).
             ingredient_ids = []
             for ingredient in recipe.ingredients:
-                row = cursor.execute(
-                    "SELECT id FROM ingredients WHERE name = ?",
-                    (ingredient.name,),
-                ).fetchone()
-                if row:
-                    ingredient_id = row['id']
-                else:
-                    ingredient_id = str(uuid.uuid4())
-                    cursor.execute(
-                        """
-                        INSERT INTO ingredients (id, name, calories_per_100g,
-                                                 protein_per_100g, carbs_per_100g, fat_per_100g)
-                        VALUES (?, ?, 0, 0, 0, 0)
-                        """,
-                        (ingredient_id, ingredient.name),
-                    )
+                ingredient_id = self._resolve_or_create_ingredient_id(cursor, ingredient)
                 ingredient_ids.append((ingredient_id, ingredient))
 
             cursor.execute(
@@ -179,22 +163,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 (recipe.id,),
             )
             for ingredient in recipe.ingredients:
-                ingredient_row = cursor.execute(
-                    "SELECT id FROM ingredients WHERE name = ?",
-                    (ingredient.name,),
-                ).fetchone()
-                if ingredient_row:
-                    ingredient_id = ingredient_row['id']
-                else:
-                    ingredient_id = str(uuid.uuid4())
-                    cursor.execute(
-                        """
-                        INSERT INTO ingredients (id, name, calories_per_100g,
-                                                 protein_per_100g, carbs_per_100g, fat_per_100g)
-                        VALUES (?, ?, 0, 0, 0, 0)
-                        """,
-                        (ingredient_id, ingredient.name),
-                    )
+                ingredient_id = self._resolve_or_create_ingredient_id(cursor, ingredient)
                 cursor.execute(
                     """
                     INSERT INTO recipe_ingredients
@@ -260,25 +229,65 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 return None
             return self._build_recipe(cursor, row)
 
-    def _build_recipe(self, cursor, recipe_row) -> Recipe:
+    def _resolve_or_create_ingredient_id(self, cursor, ingredient: Ingredient) -> str:
+        """Resolve an Ingredient to a row id in the `ingredients` table.
+
+        Three cases, in priority order:
+        1. Ingredient.catalog_ingredient_id set — picker-built; use as-is.
+           This is the path for ingredients added via the food-search UI:
+           the catalog row already exists with real per-serving nutrition.
+        2. A row with the same name exists — reuse it (legacy free-text path).
+        3. Otherwise insert a stub row with zero nutrition (legacy path,
+           used by seed recipes and any caller still building Ingredients
+           by hand without a catalog reference).
+        """
+        if ingredient.catalog_ingredient_id:
+            return ingredient.catalog_ingredient_id
+        row = cursor.execute(
+            "SELECT id FROM ingredients WHERE name = ?",
+            (ingredient.name,),
+        ).fetchone()
+        if row:
+            return row['id']
+        new_id = str(uuid.uuid4())
         cursor.execute(
             """
-            SELECT i.name, ri.quantity, ri.unit, ri.store
+            INSERT INTO ingredients (id, name, calories_per_100g,
+                                     protein_per_100g, carbs_per_100g, fat_per_100g)
+            VALUES (?, ?, 0, 0, 0, 0)
+            """,
+            (new_id, ingredient.name),
+        )
+        return new_id
+
+    def _build_recipe(self, cursor, recipe_row) -> Recipe:
+        # Pulling catalog source/serving info alongside the join row lets the
+        # calorie calculator distinguish picker-backed ingredients (real
+        # nutrition) from legacy free-text ones (zero nutrition stubs).
+        cursor.execute(
+            """
+            SELECT i.id AS ingredient_id, i.name, i.source,
+                   ri.quantity, ri.unit, ri.store
             FROM recipe_ingredients ri
             JOIN ingredients i ON ri.ingredient_id = i.id
             WHERE ri.recipe_id = ?
             """,
             (recipe_row['id'],),
         )
-        ingredients = [
-            Ingredient(
+        ingredients: List[Ingredient] = []
+        for ing in cursor.fetchall():
+            qty = Decimal(str(ing['quantity']))
+            # If the row came from the food-database picker, surface the
+            # catalog ref + servings count so consumers can compute calories.
+            picker_backed = ing['source'] in ('usda', 'openfoodfacts', 'manual')
+            ingredients.append(Ingredient(
                 name=ing['name'],
-                quantity=Decimal(str(ing['quantity'])),
+                quantity=qty,
                 unit=ing['unit'],
                 store=ing['store'],
-            )
-            for ing in cursor.fetchall()
-        ]
+                catalog_ingredient_id=ing['ingredient_id'] if picker_backed else None,
+                servings=qty if picker_backed else None,
+            ))
         return Recipe(
             name=recipe_row['name'],
             ingredients=ingredients,

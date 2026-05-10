@@ -31,9 +31,14 @@ from core.services.auth_service import (  # noqa: E402
     HouseholdNotFoundError,
 )
 from core.services.flexible_dieting import BodyCompositionService  # noqa: E402
+from core.services.food_database_service import FoodDatabaseService  # noqa: E402
 from core.services.grocery_list_service import GroceryListService  # noqa: E402
+from core.services.recipe_calorie_calculator import RecipeCalorieCalculator  # noqa: E402
 from repositories.sqlite.food_log_repository import SQLiteFoodLogRepository  # noqa: E402
 from repositories.sqlite.household_repository import SQLiteHouseholdRepository  # noqa: E402
+from repositories.sqlite.ingredient_catalog_repository import (  # noqa: E402
+    SQLiteIngredientCatalogRepository,
+)
 from repositories.sqlite.inventory_repository import SQLiteInventoryRepository  # noqa: E402
 from repositories.sqlite.meal_plan_repository import SQLiteMealPlanRepository  # noqa: E402
 from repositories.sqlite.recipe_repository import SQLiteRecipeRepository  # noqa: E402
@@ -92,6 +97,21 @@ def get_user_repo() -> SQLiteUserRepository:
 @st.cache_resource
 def get_body_composition_service() -> BodyCompositionService:
     return BodyCompositionService()
+
+
+@st.cache_resource
+def get_food_database() -> FoodDatabaseService:
+    return FoodDatabaseService()
+
+
+@st.cache_resource
+def get_catalog_repo() -> SQLiteIngredientCatalogRepository:
+    return SQLiteIngredientCatalogRepository(DB_PATH)
+
+
+@st.cache_resource
+def get_calorie_calculator() -> RecipeCalorieCalculator:
+    return RecipeCalorieCalculator(get_catalog_repo())
 
 
 # --- Auth screens ---------------------------------------------------------
@@ -212,7 +232,13 @@ def _render_sidebar() -> None:
 def recipes_page_entry() -> None:
     from web.views import recipes
     _render_sidebar()
-    recipes.render(st.session_state.user, get_recipe_repo())
+    recipes.render(
+        st.session_state.user,
+        get_recipe_repo(),
+        get_food_database(),
+        get_catalog_repo(),
+        get_calorie_calculator(),
+    )
 
 
 def pantry_page_entry() -> None:

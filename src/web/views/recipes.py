@@ -1,34 +1,39 @@
 """
-Recipes page: list household recipes; planner can add, edit, delete, and
-ask the food database to estimate calories.
+Recipes page (slice 8b refresh): the planner builds and edits recipes by
+searching real nutrition databases and picking ingredients with known
+per-serving calories. The recipe's calories per serving is then a live
+sum of (servings × catalog calories) across its ingredient list — never
+typed in by hand.
 
-Recipe ingredients are entered as one line per ingredient. Two formats are
-accepted:
-    name, quantity, unit
-    name, quantity, unit, store
-The 4-field form is what edits of seed recipes show by default so per-
-ingredient store routing isn't lost when the planner tweaks something.
+Old "estimator" pathway is gone. Old recipes that haven't yet been
+re-saved through the picker still display whatever calorie figure they
+were created with; the planner can re-edit them through the new form
+to lock in real nutrition (slice 8e backfill will do the seed batch).
 """
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import List
 
 import streamlit as st
 
-from core.domain.models import Ingredient, Recipe
+from core.domain.models import CatalogIngredient, Ingredient, Recipe
 from core.domain.security import SecurityValidationError
 from core.interfaces.user_repository import UserProfile
-from core.services.recipe_nutrition_estimator import (
-    NutritionEstimate,
-    RecipeNutritionEstimator,
+from core.services.food_database_service import FoodDatabaseService
+from core.services.recipe_calorie_calculator import RecipeCalorieCalculator
+from repositories.sqlite.ingredient_catalog_repository import (
+    SQLiteIngredientCatalogRepository,
 )
 from repositories.sqlite.recipe_repository import SQLiteRecipeRepository
+from web.views.food_picker import render_food_picker
 
 
 def render(user: UserProfile,
-           repo: SQLiteRecipeRepository,
-           estimator: RecipeNutritionEstimator) -> None:
+           recipe_repo: SQLiteRecipeRepository,
+           food_db: FoodDatabaseService,
+           catalog_repo: SQLiteIngredientCatalogRepository,
+           calorie_calc: RecipeCalorieCalculator) -> None:
     st.title("Recipes")
     st.caption(
         "Recipes are shared across your household. "
@@ -39,44 +44,74 @@ def render(user: UserProfile,
         st.warning("You're not in a household yet. Ask the planner for an invite code.")
         return
 
-    _render_recipe_list(user, repo, estimator)
+    _render_recipe_list(user, recipe_repo, food_db, catalog_repo, calorie_calc)
     if user.is_planner:
         st.divider()
-        _render_add_recipe_form(user, repo)
+        _render_add_recipe(user, recipe_repo, food_db, catalog_repo, calorie_calc)
 
+
+# ------------------------------------------------------------------ list view
 
 def _render_recipe_list(user: UserProfile,
-                        repo: SQLiteRecipeRepository,
-                        estimator: RecipeNutritionEstimator) -> None:
-    recipes = repo.find_all_by_household(user.household_id)
+                        recipe_repo: SQLiteRecipeRepository,
+                        food_db: FoodDatabaseService,
+                        catalog_repo: SQLiteIngredientCatalogRepository,
+                        calorie_calc: RecipeCalorieCalculator) -> None:
+    recipes = recipe_repo.find_all_by_household(user.household_id)
     if not recipes:
         st.info("No recipes yet. " + ("Add your first one below!" if user.is_planner else "Ask the planner to add some."))
         return
 
     editing_id = st.session_state.get("editing_recipe_id")
     for recipe in recipes:
+        breakdown = calorie_calc.compute(recipe)
+        # Live-computed calories take precedence; only fall back to the stored
+        # number for legacy recipes that haven't been re-saved through the picker.
+        cal_per_serving = (
+            breakdown.calories_per_serving
+            if breakdown.lines
+            else recipe.calories_per_serving
+        )
         tier_chip = f"[{recipe.tier}] " if recipe.tier else ""
-        cal_label = f"{recipe.calories_per_serving} cal/serving" if recipe.calories_per_serving else "calories TBD"
+        cal_label = f"{cal_per_serving} cal/serving" if cal_per_serving else "calories TBD"
         header = f"**{tier_chip}{recipe.name}** — {cal_label} · serves {recipe.base_servings}"
         with st.expander(header):
             if editing_id == recipe.id and user.is_planner:
-                _render_edit_form(user, repo, recipe)
+                _render_edit_recipe(user, recipe_repo, food_db, catalog_repo,
+                                    calorie_calc, recipe)
             else:
-                _render_recipe_card(user, repo, estimator, recipe)
+                _render_recipe_card(user, recipe_repo, recipe, breakdown)
 
 
 def _render_recipe_card(user: UserProfile,
-                        repo: SQLiteRecipeRepository,
-                        estimator: RecipeNutritionEstimator,
-                        recipe: Recipe) -> None:
+                        recipe_repo: SQLiteRecipeRepository,
+                        recipe: Recipe,
+                        breakdown) -> None:
     st.markdown("**Ingredients**")
-    for ing in recipe.ingredients:
-        store_chip = f" `{ing.store}`" if ing.store else ""
-        if ing.quantity == 0:
-            st.write(f"- {ing.name}{store_chip}")
-        else:
-            qty_str = _format_quantity(ing.quantity)
-            st.write(f"- {qty_str} {ing.unit} {ing.name}{store_chip}")
+    if breakdown.lines:
+        for line in breakdown.lines:
+            store_chip = ""
+            st.write(
+                f"- {_fmt_decimal(line.servings)} × {line.name} "
+                f"({line.serving_label}) — {line.line_calories} cal{store_chip}"
+            )
+        st.caption(
+            f"Total: {breakdown.total_calories} cal "
+            f"({breakdown.calories_per_serving} per serving)"
+        )
+        if breakdown.unaccounted_count:
+            st.caption(
+                f"_{breakdown.unaccounted_count} ingredient(s) without nutrition info — "
+                "edit and re-add them through search to include calories._"
+            )
+    else:
+        # Legacy recipe — show free-text ingredients without per-line calories.
+        for ing in recipe.ingredients:
+            qty = _fmt_decimal(ing.quantity)
+            store = f" `{ing.store}`" if ing.store else ""
+            st.write(f"- {qty} {ing.unit} {ing.name}{store}")
+        st.caption("_Stored calorie figure — edit through search to compute from real data._")
+
     if recipe.instructions:
         st.markdown("**Instructions**")
         for i, step in enumerate(recipe.instructions, start=1):
@@ -88,85 +123,112 @@ def _render_recipe_card(user: UserProfile,
     if not user.is_planner:
         return
 
-    cols = st.columns(3)
+    cols = st.columns(2)
     if cols[0].button("Edit", key=f"edit-{recipe.id}"):
         st.session_state.editing_recipe_id = recipe.id
         st.rerun()
-    if cols[1].button("Estimate cal.", key=f"est-{recipe.id}"):
-        st.session_state.estimate_for_recipe_id = recipe.id
-        st.rerun()
-    if cols[2].button("Delete", key=f"del-{recipe.id}", type="secondary"):
-        repo.delete_by_name(recipe.name, user.household_id)
+    if cols[1].button("Delete", key=f"del-{recipe.id}", type="secondary"):
+        recipe_repo.delete_by_name(recipe.name, user.household_id)
         st.rerun()
 
-    if st.session_state.get("estimate_for_recipe_id") == recipe.id:
-        _render_estimate_panel(repo, estimator, recipe, user.household_id)
 
+# ------------------------------------------------------------------ add form
 
-def _format_quantity(qty: Decimal) -> str:
-    """Render a Decimal without trailing zeros."""
-    normalized = qty.normalize()
-    return f"{normalized:f}" if normalized == normalized.to_integral_value() else str(normalized)
-
-
-def _render_add_recipe_form(user: UserProfile, repo: SQLiteRecipeRepository) -> None:
+def _render_add_recipe(user: UserProfile,
+                       recipe_repo: SQLiteRecipeRepository,
+                       food_db: FoodDatabaseService,
+                       catalog_repo: SQLiteIngredientCatalogRepository,
+                       calorie_calc: RecipeCalorieCalculator) -> None:
     st.subheader("Add a recipe")
-    with st.form("add_recipe", clear_on_submit=True):
+    draft_key = "draft_new_recipe"
+    drafts: List[_DraftIngredient] = st.session_state.setdefault(draft_key, [])
+
+    st.markdown("**Step 1 — Add ingredients via search**")
+    render_food_picker(
+        widget_key="add_picker",
+        food_db=food_db,
+        catalog_repo=catalog_repo,
+        on_pick=lambda c, s: _append_draft(draft_key, c, s),
+    )
+
+    if drafts:
+        st.markdown("**Currently in this recipe**")
+        _render_draft_list(draft_key, drafts)
+        running_total = sum(int(round(float(d.servings) * d.calories_per_serving)) for d in drafts)
+        st.caption(f"Running total: {running_total} cal (will divide by servings on save)")
+
+    st.markdown("**Step 2 — Recipe details**")
+    with st.form("add_recipe_form", clear_on_submit=False):
         name = st.text_input("Recipe name").strip()
         col1, col2 = st.columns(2)
         with col1:
             base_servings = st.number_input("Servings", min_value=1, max_value=50, value=1, step=1)
         with col2:
-            calories_per_serving = st.number_input("Calories per serving", min_value=0, max_value=5000, value=400, step=10)
-        st.caption("Ingredients (one per line, format: `name, quantity, unit`)")
-        ingredients_raw = st.text_area("Ingredients", placeholder="chicken breast, 6, oz\nrice, 1, cup")
-        submit = st.form_submit_button("Add recipe")
+            tier = st.selectbox("Tier (optional)", options=["", "S", "A", "B", "C"], index=0)
+        instructions_raw = st.text_area("Instructions (one step per line)", height=120)
+        notes = st.text_area("Notes (optional)", height=80)
+        submitted = st.form_submit_button("Save recipe", type="primary")
 
-    if not submit:
+    if not submitted:
         return
     if not name:
         st.error("Recipe name is required.")
         return
-    if not ingredients_raw.strip():
-        st.error("Please list at least one ingredient.")
-        return
-
-    try:
-        ingredients = _parse_ingredients(ingredients_raw)
-    except ValueError as e:
-        st.error(str(e))
+    if not drafts:
+        st.error("Add at least one ingredient via search above.")
         return
 
     try:
         recipe = Recipe(
             name=name,
-            ingredients=ingredients,
+            ingredients=_drafts_to_ingredients(drafts),
             base_servings=int(base_servings),
-            calories_per_serving=int(calories_per_serving),
+            calories_per_serving=_per_serving_total(drafts, int(base_servings)),
+            instructions=[s.strip() for s in instructions_raw.splitlines() if s.strip()],
+            notes=notes.strip() or None,
+            tier=tier or None,
         )
-        repo.save(recipe, household_id=user.household_id, created_by_user_id=user.user_id)
+        recipe_repo.save(recipe, household_id=user.household_id, created_by_user_id=user.user_id)
     except SecurityValidationError as e:
         st.error(f"Invalid input: {e}")
         return
 
     st.success(f"Added '{name}'.")
+    _clear_draft(draft_key)
     st.rerun()
 
 
-def _render_edit_form(user: UserProfile,
-                      repo: SQLiteRecipeRepository,
-                      recipe: Recipe) -> None:
-    """Pre-populated edit form for an existing recipe."""
-    # Build the current ingredients text in 4-field format so store routing is preserved.
-    def _ing_line(ing: Ingredient) -> str:
-        qty = _format_quantity(ing.quantity)
-        base = f"{ing.name}, {qty}, {ing.unit}"
-        return f"{base}, {ing.store}" if ing.store else base
+# ------------------------------------------------------------------ edit form
 
-    default_ingredients = "\n".join(_ing_line(ing) for ing in recipe.ingredients)
-    default_instructions = "\n".join(recipe.instructions)
+def _render_edit_recipe(user: UserProfile,
+                        recipe_repo: SQLiteRecipeRepository,
+                        food_db: FoodDatabaseService,
+                        catalog_repo: SQLiteIngredientCatalogRepository,
+                        calorie_calc: RecipeCalorieCalculator,
+                        recipe: Recipe) -> None:
+    draft_key = f"draft_edit_recipe_{recipe.id}"
+    if draft_key not in st.session_state:
+        # Seed from existing ingredients on first render of this edit session.
+        st.session_state[draft_key] = _build_initial_drafts(recipe, catalog_repo)
+    drafts: List[_DraftIngredient] = st.session_state[draft_key]
 
-    with st.form(f"edit_recipe_{recipe.id}"):
+    st.markdown("**Add or replace ingredients via search**")
+    render_food_picker(
+        widget_key=f"edit_picker_{recipe.id}",
+        food_db=food_db,
+        catalog_repo=catalog_repo,
+        on_pick=lambda c, s: _append_draft(draft_key, c, s),
+    )
+
+    st.markdown("**Currently in this recipe**")
+    if drafts:
+        _render_draft_list(draft_key, drafts)
+        running_total = sum(int(round(float(d.servings) * d.calories_per_serving)) for d in drafts)
+        st.caption(f"Running total: {running_total} cal")
+    else:
+        st.caption("_No ingredients in the recipe yet — add some via search above._")
+
+    with st.form(f"edit_recipe_form_{recipe.id}", clear_on_submit=False):
         name = st.text_input("Recipe name", value=recipe.name).strip()
         col1, col2 = st.columns(2)
         with col1:
@@ -175,56 +237,41 @@ def _render_edit_form(user: UserProfile,
                 value=recipe.base_servings, step=1,
             )
         with col2:
-            calories_per_serving = st.number_input(
-                "Calories per serving", min_value=0, max_value=5000,
-                value=recipe.calories_per_serving or 0, step=10,
-            )
-        st.caption("Ingredients (one per line: `name, quantity, unit` or `name, quantity, unit, store`)")
-        ingredients_raw = st.text_area("Ingredients", value=default_ingredients, height=150)
-        st.caption("Instructions (one step per line, leave blank if none)")
-        instructions_raw = st.text_area("Instructions", value=default_instructions, height=120)
-        tier = st.selectbox(
-            "Tier",
-            options=["", "S", "A", "B", "C"],
-            index=["", "S", "A", "B", "C"].index(recipe.tier or ""),
+            tier_opts = ["", "S", "A", "B", "C"]
+            tier_idx = tier_opts.index(recipe.tier) if recipe.tier in tier_opts else 0
+            tier = st.selectbox("Tier (optional)", options=tier_opts, index=tier_idx)
+        instructions_raw = st.text_area(
+            "Instructions (one step per line)",
+            value="\n".join(recipe.instructions), height=120,
         )
-        notes = st.text_area("Notes", value=recipe.notes or "", height=80)
-
+        notes = st.text_area("Notes (optional)", value=recipe.notes or "", height=80)
         col_save, col_cancel = st.columns(2)
         save = col_save.form_submit_button("Save changes", type="primary")
         cancel = col_cancel.form_submit_button("Cancel")
 
     if cancel:
+        _clear_draft(draft_key)
         st.session_state.pop("editing_recipe_id", None)
         st.rerun()
 
     if not save:
         return
-
     if not name:
         st.error("Recipe name is required.")
         return
-    if not ingredients_raw.strip():
-        st.error("Please list at least one ingredient.")
+    if not drafts:
+        st.error("Recipe needs at least one ingredient.")
         return
-
-    try:
-        ingredients = _parse_ingredients(ingredients_raw)
-    except ValueError as e:
-        st.error(str(e))
-        return
-
-    steps = [s.strip() for s in instructions_raw.splitlines() if s.strip()]
 
     try:
         recipe.name = name
+        recipe.ingredients = _drafts_to_ingredients(drafts)
         recipe.base_servings = int(base_servings)
-        recipe.calories_per_serving = int(calories_per_serving)
-        recipe.ingredients = ingredients
-        recipe.instructions = steps
-        recipe.tier = tier or None
+        recipe.calories_per_serving = _per_serving_total(drafts, int(base_servings))
+        recipe.instructions = [s.strip() for s in instructions_raw.splitlines() if s.strip()]
         recipe.notes = notes.strip() or None
-        result = repo.update(recipe, household_id=user.household_id)
+        recipe.tier = tier or None
+        result = recipe_repo.update(recipe, household_id=user.household_id)
     except SecurityValidationError as e:
         st.error(f"Invalid input: {e}")
         return
@@ -232,91 +279,89 @@ def _render_edit_form(user: UserProfile,
     if result is None:
         st.error("Could not save — recipe not found.")
         return
-
     st.success(f"Updated '{result.name}'.")
+    _clear_draft(draft_key)
     st.session_state.pop("editing_recipe_id", None)
-    st.session_state.pop("estimate_for_recipe_id", None)
     st.rerun()
 
 
-def _render_estimate_panel(repo: SQLiteRecipeRepository,
-                           estimator,
-                           recipe: Recipe,
-                           household_id: str) -> None:
-    """Show a calorie estimate breakdown and let the planner save it to the recipe."""
-    st.divider()
-    st.markdown("**Calorie estimate**")
+# ------------------------------------------------------------------ draft helpers
 
-    with st.spinner("Estimating…"):
-        try:
-            result: NutritionEstimate = estimator.estimate(recipe)
-        except Exception as e:
-            st.error(f"Estimation failed: {e}")
-            return
+class _DraftIngredient:
+    """Lightweight in-memory record of a picker-added ingredient. Held in
+    session state until the form is saved."""
+    __slots__ = ("catalog_id", "display_name", "serving_label",
+                 "calories_per_serving", "servings")
 
-    # Per-ingredient table.
-    rows = []
-    for est in result.estimates:
-        if est.estimated_calories is not None:
-            rows.append({"Ingredient": est.ingredient_name,
-                         "Matched as": est.matched_food or "—",
-                         "Calories": est.estimated_calories})
-        else:
-            rows.append({"Ingredient": est.ingredient_name,
-                         "Matched as": f"skipped — {est.skip_reason}",
-                         "Calories": "—"})
-    st.table(rows)
-
-    st.write(f"**Total: {result.total_calories} cal "
-             f"({result.total_calories_per_serving} cal / serving)**")
-    if result.skipped_count:
-        st.caption(f"{result.skipped_count} ingredient(s) skipped (see table above). "
-                   "Actual calories will be higher.")
-
-    col_save, col_dismiss = st.columns(2)
-    if col_save.button("Save estimate to recipe", key=f"save-est-{recipe.id}"):
-        recipe.calories_per_serving = result.total_calories_per_serving
-        repo.update(recipe, household_id=household_id)
-        st.success(f"Saved {result.total_calories_per_serving} cal/serving.")
-        st.session_state.pop("estimate_for_recipe_id", None)
-        st.rerun()
-    if col_dismiss.button("Dismiss", key=f"dismiss-est-{recipe.id}"):
-        st.session_state.pop("estimate_for_recipe_id", None)
-        st.rerun()
+    def __init__(self, catalog: CatalogIngredient, servings: Decimal):
+        self.catalog_id = catalog.id
+        self.display_name = catalog.display_name
+        self.serving_label = catalog.serving_label
+        self.calories_per_serving = catalog.calories_per_serving
+        self.servings = servings
 
 
-def _parse_ingredients(raw: str) -> List[Ingredient]:
-    """Parse a multi-line block of ingredient entries.
+def _append_draft(draft_key: str, catalog: CatalogIngredient, servings: Decimal) -> None:
+    drafts: List[_DraftIngredient] = st.session_state.setdefault(draft_key, [])
+    drafts.append(_DraftIngredient(catalog, servings))
 
-    Accepted formats per line:
-        name, quantity, unit
-        name, quantity, unit, store
-    """
-    ingredients: List[Ingredient] = []
-    for lineno, line in enumerate(raw.splitlines(), start=1):
-        line = line.strip()
-        if not line:
+
+def _clear_draft(draft_key: str) -> None:
+    st.session_state.pop(draft_key, None)
+
+
+def _render_draft_list(draft_key: str, drafts: List[_DraftIngredient]) -> None:
+    """Render each draft ingredient with a remove button."""
+    for idx, draft in enumerate(drafts):
+        line_cal = int(round(float(draft.servings) * draft.calories_per_serving))
+        cols = st.columns([6, 1])
+        cols[0].write(
+            f"- {_fmt_decimal(draft.servings)} × {draft.display_name} "
+            f"({draft.serving_label}) — {line_cal} cal"
+        )
+        if cols[1].button("Remove", key=f"{draft_key}_rm_{idx}"):
+            drafts.pop(idx)
+            st.rerun()
+
+
+def _build_initial_drafts(recipe: Recipe,
+                          catalog_repo: SQLiteIngredientCatalogRepository) -> List[_DraftIngredient]:
+    """Pre-populate edit drafts from a recipe's catalog-backed ingredients.
+    Legacy free-text ingredients are skipped so the planner re-picks them
+    through search (where they get real nutrition)."""
+    drafts: List[_DraftIngredient] = []
+    for ing in recipe.ingredients:
+        if not (ing.catalog_ingredient_id and ing.servings is not None):
             continue
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) == 3:
-            ing_name, qty_str, unit = parts
-            store = None
-        elif len(parts) == 4:
-            ing_name, qty_str, unit, store = parts
-            store = store or None
-        else:
-            raise ValueError(
-                f"Line {lineno}: expected 'name, quantity, unit' or "
-                f"'name, quantity, unit, store' (got: {line!r})"
-            )
-        try:
-            qty = Decimal(qty_str)
-        except InvalidOperation:
-            raise ValueError(f"Line {lineno}: quantity '{qty_str}' is not a number")
-        try:
-            ingredients.append(Ingredient(name=ing_name, quantity=qty, unit=unit, store=store))
-        except SecurityValidationError as e:
-            raise ValueError(f"Line {lineno}: {e}")
-    if not ingredients:
-        raise ValueError("Please list at least one ingredient.")
-    return ingredients
+        catalog = catalog_repo.find_by_id(ing.catalog_ingredient_id)
+        if catalog is None:
+            continue
+        drafts.append(_DraftIngredient(catalog, ing.servings))
+    return drafts
+
+
+def _drafts_to_ingredients(drafts: List[_DraftIngredient]) -> List[Ingredient]:
+    """Convert the in-memory draft rows into Ingredient records the recipe
+    repo can persist. We set name/quantity/unit for compatibility with the
+    legacy fields and also populate catalog_ingredient_id + servings so the
+    calorie calculator can reuse the link on read."""
+    return [
+        Ingredient(
+            name=d.display_name,
+            quantity=d.servings,
+            unit=d.serving_label,
+            catalog_ingredient_id=d.catalog_id,
+            servings=d.servings,
+        )
+        for d in drafts
+    ]
+
+
+def _per_serving_total(drafts: List[_DraftIngredient], servings: int) -> int:
+    total = sum(int(round(float(d.servings) * d.calories_per_serving)) for d in drafts)
+    return int(round(total / servings)) if servings > 0 else 0
+
+
+def _fmt_decimal(qty: Decimal) -> str:
+    normalized = qty.normalize()
+    return f"{normalized:f}" if normalized == normalized.to_integral_value() else str(normalized)

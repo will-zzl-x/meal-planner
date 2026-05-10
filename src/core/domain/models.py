@@ -13,7 +13,15 @@ class Ingredient:
     quantity: Decimal
     unit: str
     store: Optional[str] = None  # Where to buy this (e.g., "Costco", "Walmart"); None = unspecified.
-    
+    # Slice 8b: when the user picks an ingredient from the food-database
+    # search picker, we record which catalog row it came from and how many
+    # of that catalog row's servings the recipe uses. Calories are then a
+    # straight multiplication (servings × catalog.calories_per_serving)
+    # instead of a guess from a free-text name. Old/seed/scaler-built
+    # ingredients leave these as None.
+    catalog_ingredient_id: Optional[str] = None
+    servings: Optional[Decimal] = None
+
     def __post_init__(self):
         """Validate ingredient data on creation."""
         self.name = validate_ingredient_name(self.name)
