@@ -57,6 +57,11 @@ class InventoryItem:
     expiration_date: Optional[date] = None
     purchase_date: Optional[date] = None
     location: str = "pantry"  # pantry, fridge, freezer
+    # V2-2: optional reference to the catalog row this pantry item
+    # represents. When set, pantry-coverage matching can be exact
+    # (catalog_ingredient_id == catalog_ingredient_id) instead of doing
+    # fuzzy name comparison. Legacy / quick-typed items leave it None.
+    catalog_ingredient_id: Optional[str] = None
 
     def __post_init__(self):
         """Validate inventory item data on creation."""

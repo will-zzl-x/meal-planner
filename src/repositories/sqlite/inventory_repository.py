@@ -29,7 +29,7 @@ class SQLiteInventoryRepository(IInventoryRepository):
         with self.db_manager.get_connection() as conn:
             cursor = conn.execute(
                 """
-                SELECT ingredient_name, quantity, unit
+                SELECT ingredient_name, quantity, unit, catalog_ingredient_id
                 FROM inventory
                 WHERE household_id = ?
                 ORDER BY ingredient_name
@@ -41,6 +41,7 @@ class SQLiteInventoryRepository(IInventoryRepository):
                     name=row['ingredient_name'],
                     quantity=Decimal(str(row['quantity'])),
                     unit=row['unit'],
+                    catalog_ingredient_id=row['catalog_ingredient_id'],
                 )
                 for row in cursor.fetchall()
             ]
@@ -53,17 +54,23 @@ class SQLiteInventoryRepository(IInventoryRepository):
             for item in items:
                 conn.execute(
                     """
-                    INSERT INTO inventory (id, household_id, ingredient_name, quantity, unit)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO inventory
+                        (id, household_id, ingredient_name, quantity, unit, catalog_ingredient_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (str(uuid.uuid4()), household_id, item.name,
-                     float(item.quantity), item.unit),
+                     float(item.quantity), item.unit, item.catalog_ingredient_id),
                 )
             conn.commit()
 
     def add_inventory_item(self, household_id: str,
                            item: InventoryItem) -> InventoryItem:
-        """Insert the item, or replace the quantity if (name, unit) already exists."""
+        """Insert the item, or replace the quantity if (name, unit) already exists.
+
+        On replace, also overwrite the catalog_ingredient_id — letting a
+        user "link" an existing free-text pantry row to a catalog entry
+        by adding it again with the link.
+        """
         with self.db_manager.get_connection() as conn:
             existing = conn.execute(
                 """
@@ -76,19 +83,22 @@ class SQLiteInventoryRepository(IInventoryRepository):
                 conn.execute(
                     """
                     UPDATE inventory
-                    SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+                    SET quantity = ?,
+                        catalog_ingredient_id = ?,
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
-                    (float(item.quantity), existing['id']),
+                    (float(item.quantity), item.catalog_ingredient_id, existing['id']),
                 )
             else:
                 conn.execute(
                     """
-                    INSERT INTO inventory (id, household_id, ingredient_name, quantity, unit)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO inventory
+                        (id, household_id, ingredient_name, quantity, unit, catalog_ingredient_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (str(uuid.uuid4()), household_id, item.name,
-                     float(item.quantity), item.unit),
+                     float(item.quantity), item.unit, item.catalog_ingredient_id),
                 )
             conn.commit()
         return item
