@@ -1,0 +1,30 @@
+# Keep the build image small + don't ship local data.
+.git
+.gitignore
+.pytest_cache
+.kiro
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Local DB files — the deployed app uses /data/meal_planner.db on the volume.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Docs aren't needed at runtime.
+docs/
+specs/
+*.md
+
+# Tests don't need to ship to prod.
+src/**/test_*.py
+src/**/tests/
+
+# Editor/IDE noise.
+.vscode/
+.idea/
+.DS_Store

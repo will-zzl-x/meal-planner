@@ -1,0 +1,26 @@
+# Auto-deploys the app to Fly.io whenever main is updated.
+# Setup (one-time):
+#   1. After your first `fly launch` locally, run `fly tokens create deploy`
+#      and copy the token it prints.
+#   2. In GitHub: repo Settings → Secrets and variables → Actions → New
+#      repository secret. Name: FLY_API_TOKEN. Value: that token.
+# After that, every push to main triggers a deploy. No terminal needed.
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}  # also lets you trigger from the GitHub UI manually
+
+jobs:
+  deploy:
+    name: Deploy app
+    runs-on: ubuntu-latest
+    concurrency: deploy-group  # don't deploy two pushes at once
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
