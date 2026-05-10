@@ -136,6 +136,88 @@ class SQLiteRecipeRepository(IRecipeRepository):
             recipe_rows = cursor.fetchall()
             return [self._build_recipe(cursor, row) for row in recipe_rows]
 
+    def update(self, recipe: Recipe, household_id: str) -> Optional[Recipe]:
+        """Update an existing recipe in place, replacing its ingredient list.
+
+        Implementation note: the simplest correct way to update the ingredient
+        list is "delete the join rows and re-insert", which we do inside a
+        single transaction so a failure halfway through doesn't leave half-
+        replaced ingredients.
+        """
+        if not recipe.id:
+            raise ValueError("update() requires recipe.id to be set")
+
+        with self.db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            existing = cursor.execute(
+                "SELECT id FROM recipes WHERE id = ? AND household_id = ?",
+                (recipe.id, household_id),
+            ).fetchone()
+            if not existing:
+                return None
+
+            cursor.execute(
+                """
+                UPDATE recipes
+                SET name = ?,
+                    base_servings = ?,
+                    calories_per_serving = ?,
+                    instructions = ?,
+                    notes = ?,
+                    tier = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND household_id = ?
+                """,
+                (recipe.name, recipe.base_servings, recipe.calories_per_serving,
+                 _serialize_instructions(recipe.instructions),
+                 recipe.notes, recipe.tier, recipe.id, household_id),
+            )
+
+            # Replace ingredient associations.
+            cursor.execute(
+                "DELETE FROM recipe_ingredients WHERE recipe_id = ?",
+                (recipe.id,),
+            )
+            for ingredient in recipe.ingredients:
+                ingredient_row = cursor.execute(
+                    "SELECT id FROM ingredients WHERE name = ?",
+                    (ingredient.name,),
+                ).fetchone()
+                if ingredient_row:
+                    ingredient_id = ingredient_row['id']
+                else:
+                    ingredient_id = str(uuid.uuid4())
+                    cursor.execute(
+                        """
+                        INSERT INTO ingredients (id, name, calories_per_100g,
+                                                 protein_per_100g, carbs_per_100g, fat_per_100g)
+                        VALUES (?, ?, 0, 0, 0, 0)
+                        """,
+                        (ingredient_id, ingredient.name),
+                    )
+                cursor.execute(
+                    """
+                    INSERT INTO recipe_ingredients
+                        (id, recipe_id, ingredient_id, quantity, unit, store)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (str(uuid.uuid4()), recipe.id, ingredient_id,
+                     float(ingredient.quantity), ingredient.unit, ingredient.store),
+                )
+
+            conn.commit()
+
+        return Recipe(
+            name=recipe.name,
+            ingredients=list(recipe.ingredients),
+            base_servings=recipe.base_servings,
+            calories_per_serving=recipe.calories_per_serving,
+            id=recipe.id,
+            instructions=list(recipe.instructions),
+            notes=recipe.notes,
+            tier=recipe.tier,
+        )
+
     def delete_by_name(self, name: str, household_id: str) -> bool:
         """Delete a recipe by its name within a household. Convenience for the V1 UI,
         which doesn't surface recipe IDs."""

@@ -51,51 +51,131 @@ class FoodDatabaseService:
         self._sample_database = self._create_comprehensive_sample_database()
     
     def _create_comprehensive_sample_database(self) -> List[FoodItem]:
-        """Create comprehensive sample database with NCCDB/CRDB style data."""
+        """Sample nutrition database used as the offline fallback for food
+        searches. All "100g" entries report calories per 100 grams; "piece"
+        entries report calories per typical-size unit. The RecipeNutritionEstimator
+        uses this set today; live USDA / Open Food Facts integration is the
+        upgrade path for accuracy on rarer ingredients.
+        """
+        zero = Decimal('0')
         return [
-            # Proteins
-            FoodItem("Chicken Breast, Raw", 165, Decimal('31'), Decimal('0'), Decimal('3.6'), "100g", "protein", "sample"),
-            FoodItem("Salmon Fillet, Raw", 208, Decimal('22'), Decimal('0'), Decimal('12'), "100g", "protein", "sample"),
-            FoodItem("Ground Beef, 85% Lean", 250, Decimal('26'), Decimal('0'), Decimal('15'), "100g", "protein", "sample"),
-            FoodItem("Eggs, Large", 155, Decimal('13'), Decimal('1.1'), Decimal('11'), "100g", "protein", "sample"),
-            
-            # Carbohydrates
-            FoodItem("Brown Rice, Cooked", 123, Decimal('2.6'), Decimal('23'), Decimal('0.9'), "100g", "grain", "sample"),
-            FoodItem("Quinoa, Cooked", 120, Decimal('4.4'), Decimal('22'), Decimal('1.9'), "100g", "grain", "sample"),
-            FoodItem("Sweet Potato, Baked", 103, Decimal('2.3'), Decimal('24'), Decimal('0.1'), "100g", "vegetable", "sample"),
-            FoodItem("Oats, Rolled, Dry", 389, Decimal('16.9'), Decimal('66'), Decimal('6.9'), "100g", "grain", "sample"),
-            
-            # Fruits
-            FoodItem("Apple, Medium", 95, Decimal('0.5'), Decimal('25'), Decimal('0.3'), "piece", "fruit", "sample"),
-            FoodItem("Banana, Medium", 105, Decimal('1.3'), Decimal('27'), Decimal('0.4'), "piece", "fruit", "sample"),
-            FoodItem("Blueberries, Fresh", 57, Decimal('0.7'), Decimal('14'), Decimal('0.3'), "100g", "fruit", "sample"),
-            FoodItem("Strawberries, Fresh", 32, Decimal('0.7'), Decimal('7.7'), Decimal('0.3'), "100g", "fruit", "sample"),
-            
-            # Vegetables
-            FoodItem("Broccoli, Raw", 34, Decimal('2.8'), Decimal('7'), Decimal('0.4'), "100g", "vegetable", "sample"),
-            FoodItem("Spinach, Raw", 23, Decimal('2.9'), Decimal('3.6'), Decimal('0.4'), "100g", "vegetable", "sample"),
-            FoodItem("Bell Pepper, Red", 31, Decimal('1'), Decimal('7'), Decimal('0.3'), "100g", "vegetable", "sample"),
-            
-            # Fats/Nuts
-            FoodItem("Almonds, Raw", 579, Decimal('21'), Decimal('22'), Decimal('50'), "100g", "nuts", "sample"),
-            FoodItem("Avocado, Medium", 234, Decimal('2.9'), Decimal('12'), Decimal('21'), "piece", "fruit", "sample"),
-            FoodItem("Olive Oil, Extra Virgin", 884, Decimal('0'), Decimal('0'), Decimal('100'), "100g", "oil", "sample"),
-            
-            # Dairy
-            FoodItem("Greek Yogurt, Plain, Nonfat", 59, Decimal('10'), Decimal('3.6'), Decimal('0.4'), "100g", "dairy", "sample"),
-            FoodItem("Milk, 2% Fat", 50, Decimal('3.3'), Decimal('4.8'), Decimal('2'), "100ml", "dairy", "sample"),
+            # Proteins (per 100g cooked unless noted).
+            FoodItem("Chicken Breast", 165, Decimal('31'), zero, Decimal('3.6'), "100g", "protein", "sample"),
+            FoodItem("Chicken Thigh", 209, Decimal('26'), zero, Decimal('11'), "100g", "protein", "sample"),
+            FoodItem("Rotisserie Chicken", 190, Decimal('29'), zero, Decimal('8'), "100g", "protein", "sample"),
+            FoodItem("Salmon Fillet", 208, Decimal('22'), zero, Decimal('12'), "100g", "protein", "sample"),
+            FoodItem("Ground Beef 90 10", 176, Decimal('20'), zero, Decimal('10'), "100g", "protein", "sample"),
+            FoodItem("Ground Beef 85 15", 250, Decimal('26'), zero, Decimal('17'), "100g", "protein", "sample"),
+            FoodItem("Ground Sausage", 301, Decimal('14'), Decimal('1'), Decimal('27'), "100g", "protein", "sample"),
+            FoodItem("NY Strip Steak", 270, Decimal('26'), zero, Decimal('18'), "100g", "protein", "sample"),
+            FoodItem("Egg Large", 78, Decimal('6'), Decimal('0.6'), Decimal('5'), "piece", "protein", "sample"),
+            FoodItem("Egg White", 17, Decimal('3.6'), Decimal('0.2'), zero, "piece", "protein", "sample"),
+
+            # Grains / starches (per 100g cooked unless noted).
+            FoodItem("White Rice Cooked", 130, Decimal('2.7'), Decimal('28'), Decimal('0.3'), "100g", "grain", "sample"),
+            FoodItem("White Rice Dry", 365, Decimal('7'), Decimal('80'), Decimal('0.7'), "100g", "grain", "sample"),
+            FoodItem("Basmati Rice Dry", 360, Decimal('7.5'), Decimal('78'), Decimal('0.9'), "100g", "grain", "sample"),
+            FoodItem("Short Grain Rice Dry", 358, Decimal('6.5'), Decimal('80'), Decimal('0.6'), "100g", "grain", "sample"),
+            FoodItem("Brown Rice Cooked", 123, Decimal('2.6'), Decimal('23'), Decimal('0.9'), "100g", "grain", "sample"),
+            FoodItem("Oats Rolled Dry", 389, Decimal('17'), Decimal('66'), Decimal('7'), "100g", "grain", "sample"),
+            FoodItem("Spaghetti Dry", 371, Decimal('13'), Decimal('75'), Decimal('1.5'), "100g", "grain", "sample"),
+            FoodItem("Chow Mein Noodles", 286, Decimal('5'), Decimal('38'), Decimal('14'), "100g", "grain", "sample"),
+            FoodItem("Brioche Bun", 220, Decimal('7'), Decimal('29'), Decimal('8'), "piece", "grain", "sample"),
+            FoodItem("Corn Flakes", 357, Decimal('7'), Decimal('84'), Decimal('0.4'), "100g", "grain", "sample"),
+            FoodItem("Flour", 364, Decimal('10'), Decimal('76'), Decimal('1'), "100g", "grain", "sample"),
+            FoodItem("Idaho Potato", 161, Decimal('4.3'), Decimal('37'), Decimal('0.2'), "piece", "vegetable", "sample"),
+            FoodItem("Sweet Potato Baked", 103, Decimal('2.3'), Decimal('24'), Decimal('0.1'), "100g", "vegetable", "sample"),
+
+            # Vegetables / herbs.
+            FoodItem("Broccoli", 34, Decimal('2.8'), Decimal('7'), Decimal('0.4'), "100g", "vegetable", "sample"),
+            FoodItem("Spinach", 23, Decimal('2.9'), Decimal('3.6'), Decimal('0.4'), "100g", "vegetable", "sample"),
+            FoodItem("Kale", 49, Decimal('4.3'), Decimal('9'), Decimal('0.9'), "100g", "vegetable", "sample"),
+            FoodItem("Bok Choy", 13, Decimal('1.5'), Decimal('2.2'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Gai Lan", 22, Decimal('1.9'), Decimal('3'), Decimal('0.6'), "100g", "vegetable", "sample"),
+            FoodItem("Asparagus", 20, Decimal('2.2'), Decimal('3.9'), Decimal('0.1'), "100g", "vegetable", "sample"),
+            FoodItem("Zucchini", 17, Decimal('1.2'), Decimal('3.1'), Decimal('0.3'), "100g", "vegetable", "sample"),
+            FoodItem("Cauliflower Rice", 25, Decimal('2'), Decimal('5'), Decimal('0.3'), "100g", "vegetable", "sample"),
+            FoodItem("Bell Pepper", 31, Decimal('1'), Decimal('7'), Decimal('0.3'), "piece", "vegetable", "sample"),
+            FoodItem("Onion", 44, Decimal('1.2'), Decimal('10'), Decimal('0.1'), "piece", "vegetable", "sample"),
+            FoodItem("Yellow Onion", 44, Decimal('1.2'), Decimal('10'), Decimal('0.1'), "piece", "vegetable", "sample"),
+            FoodItem("Carrot", 25, Decimal('0.6'), Decimal('6'), Decimal('0.1'), "piece", "vegetable", "sample"),
+            FoodItem("Shredded Carrots", 41, Decimal('0.9'), Decimal('10'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Celery", 6, Decimal('0.3'), Decimal('1.2'), zero, "piece", "vegetable", "sample"),
+            FoodItem("Roma Tomato", 22, Decimal('1.1'), Decimal('4.8'), Decimal('0.2'), "piece", "vegetable", "sample"),
+            FoodItem("Crushed Tomatoes", 32, Decimal('1.5'), Decimal('7'), Decimal('0.3'), "100g", "vegetable", "sample"),
+            FoodItem("Tomato Paste", 82, Decimal('4.3'), Decimal('19'), Decimal('0.5'), "100g", "vegetable", "sample"),
+            FoodItem("Black Beans Canned", 91, Decimal('6'), Decimal('16'), Decimal('0.3'), "100g", "legume", "sample"),
+            FoodItem("Napa Cabbage", 13, Decimal('1.2'), Decimal('2.4'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Bean Sprouts", 30, Decimal('3'), Decimal('6'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Green Onion", 5, Decimal('0.3'), Decimal('1.1'), zero, "piece", "vegetable", "sample"),
+            FoodItem("Spring Onion", 5, Decimal('0.3'), Decimal('1.1'), zero, "piece", "vegetable", "sample"),
+            FoodItem("Cucumber", 45, Decimal('2'), Decimal('11'), Decimal('0.3'), "piece", "vegetable", "sample"),
+            FoodItem("Cilantro", 23, Decimal('2.1'), Decimal('3.7'), Decimal('0.5'), "100g", "herb", "sample"),
+            FoodItem("Parsley", 36, Decimal('3'), Decimal('6'), Decimal('0.8'), "100g", "herb", "sample"),
+            FoodItem("Garlic Clove", 4, Decimal('0.2'), Decimal('1'), zero, "piece", "herb", "sample"),
+            FoodItem("Ginger", 80, Decimal('1.8'), Decimal('18'), Decimal('0.8'), "100g", "herb", "sample"),
+            FoodItem("Rosemary Sprig", 2, zero, Decimal('0.4'), zero, "piece", "herb", "sample"),
+
+            # Fruits.
+            FoodItem("Apple Medium", 95, Decimal('0.5'), Decimal('25'), Decimal('0.3'), "piece", "fruit", "sample"),
+            FoodItem("Banana Medium", 105, Decimal('1.3'), Decimal('27'), Decimal('0.4'), "piece", "fruit", "sample"),
+            FoodItem("Blueberries", 57, Decimal('0.7'), Decimal('14'), Decimal('0.3'), "100g", "fruit", "sample"),
+            FoodItem("Strawberries", 32, Decimal('0.7'), Decimal('7.7'), Decimal('0.3'), "100g", "fruit", "sample"),
+            FoodItem("Avocado", 240, Decimal('3'), Decimal('13'), Decimal('22'), "piece", "fruit", "sample"),
+            FoodItem("Lemon", 17, Decimal('0.6'), Decimal('5.4'), Decimal('0.2'), "piece", "fruit", "sample"),
+            FoodItem("Lime", 20, Decimal('0.5'), Decimal('7'), Decimal('0.1'), "piece", "fruit", "sample"),
+            FoodItem("Pineapple", 50, Decimal('0.5'), Decimal('13'), Decimal('0.1'), "100g", "fruit", "sample"),
+
+            # Dairy / cheese.
+            FoodItem("Greek Yogurt Nonfat", 59, Decimal('10'), Decimal('3.6'), Decimal('0.4'), "100g", "dairy", "sample"),
+            FoodItem("Milk 2 Percent", 50, Decimal('3.3'), Decimal('4.8'), Decimal('2'), "100g", "dairy", "sample"),
             FoodItem("Cheddar Cheese", 403, Decimal('25'), Decimal('1.3'), Decimal('33'), "100g", "dairy", "sample"),
-            
-            # Supplements
-            FoodItem("Whey Protein Powder", 120, Decimal('25'), Decimal('3'), Decimal('1'), "scoop", "supplement", "sample"),
-            FoodItem("Creatine Monohydrate", 0, Decimal('0'), Decimal('0'), Decimal('0'), "5g", "supplement", "sample"),
-            FoodItem("Multivitamin", 0, Decimal('0'), Decimal('0'), Decimal('0'), "tablet", "supplement", "sample"),
-            
-            # Restaurant/Fast Food (common items)
-            FoodItem("McDonald's Big Mac", 550, Decimal('25'), Decimal('45'), Decimal('31'), "piece", "restaurant", "sample"),
-            FoodItem("Chipotle Burrito Bowl", 650, Decimal('32'), Decimal('65'), Decimal('25'), "bowl", "restaurant", "sample"),
-            FoodItem("Subway 6\" Turkey Breast", 280, Decimal('18'), Decimal('46'), Decimal('3.5'), "sandwich", "restaurant", "sample"),
-            FoodItem("Starbucks Grande Latte", 190, Decimal('12'), Decimal('18'), Decimal('7'), "16oz", "restaurant", "sample"),
+            FoodItem("Mozzarella Reduced Fat", 254, Decimal('24'), Decimal('3.1'), Decimal('16'), "100g", "dairy", "sample"),
+            FoodItem("Butter", 717, Decimal('0.9'), Decimal('0.1'), Decimal('81'), "100g", "fat", "sample"),
+
+            # Oils / fats.
+            FoodItem("Olive Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("EVOO", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("Avocado Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("Vegetable Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("Grape Seed Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("Sesame Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+
+            # Sauces / condiments.
+            FoodItem("Soy Sauce", 53, Decimal('8'), Decimal('5'), Decimal('0.6'), "100g", "sauce", "sample"),
+            FoodItem("Hoisin Sauce", 220, Decimal('3.3'), Decimal('44'), Decimal('3.4'), "100g", "sauce", "sample"),
+            FoodItem("Rice Vinegar", 18, Decimal('0.3'), Decimal('0.04'), zero, "100g", "sauce", "sample"),
+            FoodItem("Sherry Vinegar", 19, Decimal('0.4'), Decimal('0.3'), zero, "100g", "sauce", "sample"),
+            FoodItem("Gochujang", 240, Decimal('5'), Decimal('51'), Decimal('1'), "100g", "sauce", "sample"),
+            FoodItem("Sriracha", 93, Decimal('1.9'), Decimal('19'), Decimal('0.9'), "100g", "sauce", "sample"),
+            FoodItem("Honey", 304, Decimal('0.3'), Decimal('82'), zero, "100g", "sauce", "sample"),
+            FoodItem("Hot Honey", 304, Decimal('0.3'), Decimal('82'), zero, "100g", "sauce", "sample"),
+            FoodItem("Adobo Sauce", 70, Decimal('1.5'), Decimal('11'), Decimal('2.5'), "100g", "sauce", "sample"),
+            FoodItem("Chipotle In Adobo", 95, Decimal('2'), Decimal('15'), Decimal('3'), "100g", "sauce", "sample"),
+            FoodItem("Pickle Juice", 11, Decimal('0.4'), Decimal('1.6'), zero, "100g", "sauce", "sample"),
+            FoodItem("Cornstarch", 381, Decimal('0.3'), Decimal('91'), zero, "100g", "grain", "sample"),
+            FoodItem("Beef Bouillon", 200, Decimal('11'), Decimal('11'), Decimal('13'), "100g", "sauce", "sample"),
+
+            # Spices (calorie contribution is negligible at typical recipe doses).
+            FoodItem("Salt", 0, zero, zero, zero, "100g", "spice", "sample"),
+            FoodItem("Black Pepper", 251, Decimal('10'), Decimal('64'), Decimal('3.3'), "100g", "spice", "sample"),
+            FoodItem("White Pepper", 296, Decimal('10'), Decimal('69'), Decimal('2'), "100g", "spice", "sample"),
+            FoodItem("Garlic Powder", 331, Decimal('17'), Decimal('73'), Decimal('0.7'), "100g", "spice", "sample"),
+            FoodItem("Onion Powder", 341, Decimal('10'), Decimal('79'), Decimal('1'), "100g", "spice", "sample"),
+            FoodItem("Paprika", 282, Decimal('14'), Decimal('54'), Decimal('13'), "100g", "spice", "sample"),
+            FoodItem("Smoked Paprika", 282, Decimal('14'), Decimal('54'), Decimal('13'), "100g", "spice", "sample"),
+            FoodItem("Cumin", 375, Decimal('18'), Decimal('44'), Decimal('22'), "100g", "spice", "sample"),
+            FoodItem("Chili Powder", 282, Decimal('14'), Decimal('50'), Decimal('14'), "100g", "spice", "sample"),
+            FoodItem("Chipotle Powder", 324, Decimal('14'), Decimal('56'), Decimal('14'), "100g", "spice", "sample"),
+            FoodItem("Ancho Chili Powder", 308, Decimal('11'), Decimal('51'), Decimal('15'), "100g", "spice", "sample"),
+            FoodItem("Oregano", 265, Decimal('9'), Decimal('69'), Decimal('4.3'), "100g", "spice", "sample"),
+            FoodItem("Five Spice Powder", 360, Decimal('5'), Decimal('70'), Decimal('11'), "100g", "spice", "sample"),
+            FoodItem("Gochugaru", 282, Decimal('14'), Decimal('54'), Decimal('13'), "100g", "spice", "sample"),
+            FoodItem("Togarashi", 282, Decimal('14'), Decimal('54'), Decimal('13'), "100g", "spice", "sample"),
+            FoodItem("Chili Flakes", 282, Decimal('14'), Decimal('54'), Decimal('13'), "100g", "spice", "sample"),
+            FoodItem("Sesame Seeds", 573, Decimal('18'), Decimal('23'), Decimal('50'), "100g", "spice", "sample"),
+            FoodItem("Porcini Powder", 296, Decimal('11'), Decimal('59'), Decimal('1'), "100g", "spice", "sample"),
+            FoodItem("Sweetener Splenda", 0, zero, zero, zero, "piece", "spice", "sample"),
         ]
     
     async def search_usda_database(self, query: str, limit: int = 10) -> List[FoodItem]:

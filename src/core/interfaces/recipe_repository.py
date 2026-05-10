@@ -55,13 +55,25 @@ class IRecipeRepository(ABC):
     def delete(self, recipe_id: str, household_id: str) -> bool:
         """
         Delete a recipe for a specific household.
-        
+
         Args:
             recipe_id: ID of the recipe to delete
             household_id: ID of the household that owns the recipe
-            
+
         Returns:
             True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def update(self, recipe: Recipe, household_id: str) -> Optional[Recipe]:
+        """
+        Replace an existing recipe's fields and ingredients.
+
+        The recipe must have its `id` set; only recipes belonging to
+        `household_id` are updated.
+
+        Returns the persisted recipe, or None if no row matched.
         """
         pass
     
