@@ -53,10 +53,139 @@ def render(user: UserProfile,
         st.warning("You're not in a household yet. Ask the planner for an invite code.")
         return
 
-    _render_pantry_list(user, repo)
+    _render_last_reviewed_caption(user, repo)
+
+    # V2-8: planner can flip into a tap-fast check-in mode where each
+    # row gets Have-it / Out / Adjust controls instead of the regular
+    # display. State lives in session_state under a stable key.
+    in_checkin = st.session_state.get("pantry_checkin_mode", False)
     if user.is_planner:
+        cols = st.columns([3, 1])
+        if in_checkin:
+            if cols[1].button("Done checking in", key="pantry_checkin_exit",
+                              type="primary", use_container_width=True):
+                st.session_state["pantry_checkin_mode"] = False
+                # Touch every existing row's updated_at so last_reviewed_at
+                # reflects "I confirmed everything just now". A no-op
+                # add_inventory_item() bumps updated_at via UPDATE.
+                for item in repo.get_household_inventory(user.household_id):
+                    repo.add_inventory_item(user.household_id, item)
+                st.rerun()
+        else:
+            if cols[1].button("Quick check-in (30 sec)",
+                              key="pantry_checkin_enter",
+                              use_container_width=True):
+                st.session_state["pantry_checkin_mode"] = True
+                st.rerun()
+
+    if in_checkin:
+        _render_checkin_list(user, repo)
+    else:
+        _render_pantry_list(user, repo)
+        if user.is_planner:
+            st.divider()
+            _render_add_item_form(user, repo, food_db, catalog_repo)
+
+
+def _render_last_reviewed_caption(user: UserProfile,
+                                  repo: SQLiteInventoryRepository) -> None:
+    """Caption above the pantry list showing how recently the user
+    confirmed inventory. Helpful nudge — and the same timestamp drives
+    the stale-pantry banner on the Grocery list page."""
+    last = repo.last_reviewed_at(user.household_id)
+    if last is None:
+        st.caption("_Pantry has never been reviewed._")
+        return
+    days = _days_since(last)
+    if days <= 1:
+        st.caption("_Reviewed within the last day._")
+    else:
+        st.caption(f"_Last reviewed: {days} day(s) ago._")
+
+
+def _render_checkin_list(user: UserProfile, repo: SQLiteInventoryRepository) -> None:
+    """Tap-fast review of every existing pantry item. Each row offers
+    Have it (no-op, advances visual state) / Out (remove) / Adjust
+    (inline qty edit + Save)."""
+    items = repo.get_household_inventory(user.household_id)
+    if not items:
+        st.info("Pantry is empty — nothing to check in. Add items first.")
+        return
+
+    st.caption(
+        "Walk through each item: tap **Have it** if it's correct, **Out** if "
+        "you've used it up, or **Adjust** to fix the quantity."
+    )
+
+    confirmed_key = "pantry_checkin_confirmed"
+    confirmed = st.session_state.setdefault(confirmed_key, set())
+
+    for item in items:
+        key = f"{item.name}:{item.unit}"
+        st.markdown(f"**{item.name}** — {item.quantity} {item.unit}")
+        if key in confirmed:
+            st.caption("_Confirmed._")
+            st.divider()
+            continue
+
+        cols = st.columns(3)
+        if cols[0].button("Have it", key=f"checkin_have_{key}",
+                          use_container_width=True):
+            confirmed.add(key)
+            # Bump updated_at by re-saving the same item. add_inventory_item
+            # upserts on (name, unit) and updates updated_at on UPDATE.
+            repo.add_inventory_item(user.household_id, item)
+            st.rerun()
+        if cols[1].button("Out", key=f"checkin_out_{key}",
+                          type="secondary", use_container_width=True):
+            repo.remove_inventory_item(user.household_id, item.name, item.unit)
+            confirmed.add(key)
+            st.rerun()
+
+        adjust_open_key = f"checkin_adjust_open_{key}"
+        if cols[2].button("Adjust", key=f"checkin_adjust_btn_{key}",
+                          use_container_width=True):
+            st.session_state[adjust_open_key] = True
+            st.rerun()
+
+        if st.session_state.get(adjust_open_key):
+            with st.form(f"checkin_adjust_form_{key}", clear_on_submit=False):
+                new_qty_str = st.text_input(
+                    "New quantity", value=str(item.quantity),
+                    key=f"checkin_qty_{key}",
+                )
+                save_cols = st.columns(2)
+                save = save_cols[0].form_submit_button("Save", type="primary")
+                cancel = save_cols[1].form_submit_button("Cancel")
+            if cancel:
+                st.session_state.pop(adjust_open_key, None)
+                st.rerun()
+            if save:
+                try:
+                    new_qty = Decimal(new_qty_str)
+                except InvalidOperation:
+                    st.error(f"'{new_qty_str}' isn't a number.")
+                else:
+                    repo.add_inventory_item(
+                        user.household_id,
+                        InventoryItem(
+                            name=item.name, quantity=new_qty, unit=item.unit,
+                            catalog_ingredient_id=item.catalog_ingredient_id,
+                        ),
+                    )
+                    confirmed.add(key)
+                    st.session_state.pop(adjust_open_key, None)
+                    st.rerun()
         st.divider()
-        _render_add_item_form(user, repo, food_db, catalog_repo)
+
+    if len(confirmed) == len(items):
+        st.success("All items reviewed! Tap **Done checking in** at the top.")
+
+
+def _days_since(ts) -> int:
+    from datetime import datetime
+    delta = datetime.now() - ts
+    return max(0, delta.days)
 
 
 def _render_pantry_list(user: UserProfile, repo: SQLiteInventoryRepository) -> None:

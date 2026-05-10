@@ -10,8 +10,9 @@ Note: the V1 schema only persists name + quantity + unit. The optional
 InventoryItem are not stored yet — they round-trip as None / defaults.
 """
 import uuid
+from datetime import datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from core.domain.models import InventoryItem
 from core.interfaces.inventory_repository import IInventoryRepository
@@ -120,3 +121,23 @@ class SQLiteInventoryRepository(IInventoryRepository):
         with self.db_manager.get_connection() as conn:
             conn.execute("DELETE FROM inventory WHERE household_id = ?", (household_id,))
             conn.commit()
+
+    def last_reviewed_at(self, household_id: str) -> Optional[datetime]:
+        """Return the most recent updated_at across the household's
+        inventory rows — used as a "last pantry check-in" timestamp.
+        Returns None for an empty pantry (or one we've never touched)."""
+        with self.db_manager.get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT MAX(updated_at) AS last
+                FROM inventory
+                WHERE household_id = ?
+                """,
+                (household_id,),
+            ).fetchone()
+        if not row or not row['last']:
+            return None
+        try:
+            return datetime.fromisoformat(row['last'])
+        except (ValueError, TypeError):
+            return None

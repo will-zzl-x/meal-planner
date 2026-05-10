@@ -96,6 +96,19 @@ def test_re_adding_with_catalog_link_updates_existing_row(tmp_path):
     assert items[0].catalog_ingredient_id == "cat-99"
 
 
+def test_last_reviewed_at_returns_none_for_empty_pantry(tmp_path):
+    inv, h1, _ = _setup(tmp_path)
+    assert inv.last_reviewed_at(h1.id) is None
+
+
+def test_last_reviewed_at_after_add(tmp_path):
+    """An add bumps updated_at — the helper should pick it up."""
+    inv, h1, _ = _setup(tmp_path)
+    inv.add_inventory_item(h1.id, _item("rice", "2", "cup"))
+    ts = inv.last_reviewed_at(h1.id)
+    assert ts is not None
+
+
 def test_update_household_inventory_replaces_atomically(tmp_path):
     inv, h1, _ = _setup(tmp_path)
     inv.add_inventory_item(h1.id, _item("rice", "2", "cup"))
