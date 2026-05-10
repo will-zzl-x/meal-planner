@@ -73,7 +73,15 @@ def render_food_picker(
         st.caption(
             f"No matches for '{last_query}' in USDA, Open Food Facts, or "
             "the offline list. Try a simpler query (e.g. 'rice' instead of "
-            "'short grain Japanese rice'), or use the Quick log fallback."
+            "'short grain Japanese rice'), or add it manually below."
+        )
+        # Manual fallback is most useful here — let the user add the
+        # missing item with their own nutrition figure.
+        _render_manual_form(
+            widget_key=widget_key,
+            catalog_repo=catalog_repo,
+            on_pick=on_pick,
+            show_store=show_store,
         )
         return
     if not results:
@@ -88,6 +96,81 @@ def render_food_picker(
             on_pick=on_pick,
             show_store=show_store,
         )
+
+    # Manual fallback also offered when results exist — the catalog
+    # might not include the specific brand the user wants.
+    _render_manual_form(
+        widget_key=widget_key,
+        catalog_repo=catalog_repo,
+        on_pick=on_pick,
+        show_store=show_store,
+    )
+
+
+def _render_manual_form(*,
+                        widget_key: str,
+                        catalog_repo: SQLiteIngredientCatalogRepository,
+                        on_pick: Callable[[CatalogIngredient, Decimal, Optional[str]], None],
+                        show_store: bool) -> None:
+    with st.expander("None of these match? Add manually"):
+        st.caption(
+            "For foods the databases don't cover. The number you enter is "
+            "calories per *one serving* of whatever serving label you choose "
+            "(e.g. '1 slice', '100g', '1 medium banana')."
+        )
+        with st.form(f"{widget_key}_manual_form", clear_on_submit=False):
+            name = st.text_input("Name", key=f"{widget_key}_manual_name").strip()
+            col1, col2 = st.columns(2)
+            with col1:
+                serving_label = st.text_input(
+                    "Serving label", value="100g",
+                    key=f"{widget_key}_manual_label",
+                ).strip()
+            with col2:
+                cal_per_serving = st.number_input(
+                    "Calories per serving", min_value=0, max_value=5000,
+                    value=0, step=10,
+                    key=f"{widget_key}_manual_cal",
+                )
+            servings_str = st.text_input(
+                "How many servings?", value="1",
+                key=f"{widget_key}_manual_servings",
+            )
+            store_value = ""
+            if show_store:
+                store_value = st.text_input(
+                    "Store (optional)", value="",
+                    key=f"{widget_key}_manual_store",
+                ).strip()
+            submitted = st.form_submit_button("Add manually")
+
+        if not submitted:
+            return
+        if not name:
+            st.error("Name is required.")
+            return
+        servings = _parse_servings(servings_str)
+        if servings is None:
+            st.error("Servings must be a positive number.")
+            return
+        if not serving_label:
+            st.error("Serving label can't be empty.")
+            return
+
+        catalog = catalog_repo.save(CatalogIngredient(
+            id="",
+            name=name,
+            serving_label=serving_label,
+            calories_per_serving=int(cal_per_serving),
+            source="manual",
+            external_id=None,
+        ))
+        on_pick(catalog, servings, store_value or None)
+        # Clear the form's session-state values on success.
+        for k in (f"{widget_key}_manual_name", f"{widget_key}_manual_label",
+                  f"{widget_key}_manual_cal", f"{widget_key}_manual_servings",
+                  f"{widget_key}_manual_store"):
+            st.session_state.pop(k, None)
 
 
 def _render_result_row(*,
