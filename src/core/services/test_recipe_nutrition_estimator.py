@@ -18,7 +18,9 @@ from core.services.recipe_nutrition_estimator import (
 
 @pytest.fixture
 def estimator() -> RecipeNutritionEstimator:
-    return RecipeNutritionEstimator(FoodDatabaseService())
+    # network_enabled=False keeps tests offline (sample DB only) so they're
+    # deterministic and fast.
+    return RecipeNutritionEstimator(FoodDatabaseService(network_enabled=False))
 
 
 def _recipe(*ingredients: Ingredient, base_servings: int = 1) -> Recipe:

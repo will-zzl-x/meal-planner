@@ -107,3 +107,27 @@ class FoodItem:
     source: Optional[str] = None      # Which database provided this item
     food_id: Optional[str] = None     # Original database ID
     brand: Optional[str] = None
+
+
+@dataclass
+class CatalogIngredient:
+    """An ingredient cached locally from a real food database (USDA, Open
+    Food Facts) or entered manually. Calories and macros are expressed per
+    one `serving_label` (e.g. "1 large egg", "1 cup", "100g") — the unit
+    the source database reported them in.
+    """
+    id: str
+    name: str
+    serving_label: str
+    calories_per_serving: int
+    protein_per_serving: Decimal = Decimal("0")
+    carbs_per_serving: Decimal = Decimal("0")
+    fat_per_serving: Decimal = Decimal("0")
+    brand: Optional[str] = None
+    source: Optional[str] = None      # "usda" | "openfoodfacts" | "manual"
+    external_id: Optional[str] = None
+
+    @property
+    def display_name(self) -> str:
+        """Brand-prefixed name for UI display (Chobani — Greek Yogurt 5%)."""
+        return f"{self.brand} — {self.name}" if self.brand else self.name
