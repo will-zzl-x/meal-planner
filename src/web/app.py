@@ -268,7 +268,13 @@ def grocery_list_page_entry() -> None:
 def today_page_entry() -> None:
     from web.views import today
     _render_sidebar()
-    today.render(st.session_state.user, get_meal_plan_repo(), get_food_log_repo())
+    today.render(
+        st.session_state.user,
+        get_meal_plan_repo(),
+        get_food_log_repo(),
+        get_food_database(),
+        get_catalog_repo(),
+    )
 
 
 def profile_page_entry() -> None:

@@ -3,23 +3,32 @@ Today view: full day at a glance.
 
 For each meal slot in today's household plan, the user sees a checkbox to mark
 "I ate this." Ticked entries count toward today's logged calories. Below the
-plan, an "Off-plan eating" form lets the user record snacks, restaurant meals,
-or anything not on the plan.
+plan, an "Off-plan eating" section lets the user record snacks, restaurant
+meals, or anything not on the plan — primarily by searching real food
+databases (USDA / Open Food Facts) and picking what they ate, with a
+free-text "quick log" fallback for items the databases don't cover.
 
 Logging is per user — every household member maintains their own daily log.
 """
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Dict, List
 
 import streamlit as st
 
+from core.domain.models import CatalogIngredient
 from core.interfaces.food_log_repository import FoodLogEntry
 from core.interfaces.meal_plan_repository import MealPlanEntry
 from core.interfaces.user_repository import UserProfile
+from core.services.food_database_service import FoodDatabaseService
 from repositories.sqlite.food_log_repository import SQLiteFoodLogRepository
+from repositories.sqlite.ingredient_catalog_repository import (
+    SQLiteIngredientCatalogRepository,
+)
 from repositories.sqlite.meal_plan_repository import SQLiteMealPlanRepository
+from web.views.food_picker import render_food_picker
 
 
 _MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"]
@@ -27,7 +36,9 @@ _MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"]
 
 def render(user: UserProfile,
            plan_repo: SQLiteMealPlanRepository,
-           food_log_repo: SQLiteFoodLogRepository) -> None:
+           food_log_repo: SQLiteFoodLogRepository,
+           food_db: FoodDatabaseService,
+           catalog_repo: SQLiteIngredientCatalogRepository) -> None:
     st.title("Today")
     today = date.today()
     st.caption(today.strftime("%A, %B %d, %Y"))
@@ -50,7 +61,7 @@ def render(user: UserProfile,
         st.info("Nothing planned for today. Add planned meals on the Weekly Plan page, or log something off-plan below.")
 
     st.divider()
-    _render_off_plan_section(user, off_plan_entries, food_log_repo, today)
+    _render_off_plan_section(user, off_plan_entries, food_log_repo, food_db, catalog_repo, today)
 
 
 def _render_totals(user: UserProfile, log_entries: List[FoodLogEntry]) -> None:
@@ -108,6 +119,8 @@ def _render_planned_meal_row(user: UserProfile,
 def _render_off_plan_section(user: UserProfile,
                              off_plan_entries: List[FoodLogEntry],
                              food_log_repo: SQLiteFoodLogRepository,
+                             food_db: FoodDatabaseService,
+                             catalog_repo: SQLiteIngredientCatalogRepository,
                              today: date) -> None:
     st.subheader("Off-plan eating")
     if off_plan_entries:
@@ -120,18 +133,51 @@ def _render_off_plan_section(user: UserProfile,
     else:
         st.caption("Nothing logged off-plan today.")
 
-    with st.form("log_off_plan", clear_on_submit=True):
-        col_desc, col_cal = st.columns([3, 1])
-        with col_desc:
-            description = st.text_input("What did you eat?").strip()
-        with col_cal:
-            calories = st.number_input("Calories", min_value=0, max_value=5000, value=0, step=10)
-        submit = st.form_submit_button("Log it")
+    st.markdown("**Log a food (search USDA / Open Food Facts)**")
+    render_food_picker(
+        widget_key="today_log_picker",
+        food_db=food_db,
+        catalog_repo=catalog_repo,
+        on_pick=lambda c, s: _log_picked_food(food_log_repo, user.user_id, today, c, s),
+        label="What did you eat?",
+        placeholder="e.g. banana, Chobani yogurt, frozen pizza",
+    )
 
-    if not submit:
-        return
-    if not description:
-        st.error("Please describe what you ate.")
-        return
-    food_log_repo.log_off_plan(user.user_id, today, description, int(calories))
+    with st.expander("Quick log (free text + calories)"):
+        st.caption(
+            "Use this if the food isn't in any database — e.g. a restaurant "
+            "dish you're estimating. Search above is preferred since the "
+            "calorie figure is exact."
+        )
+        with st.form("log_off_plan_quick", clear_on_submit=True):
+            col_desc, col_cal = st.columns([3, 1])
+            with col_desc:
+                description = st.text_input("What did you eat?").strip()
+            with col_cal:
+                calories = st.number_input(
+                    "Calories", min_value=0, max_value=5000, value=0, step=10,
+                )
+            submit = st.form_submit_button("Quick log it")
+        if submit:
+            if not description:
+                st.error("Please describe what you ate.")
+            else:
+                food_log_repo.log_off_plan(user.user_id, today, description, int(calories))
+                st.rerun()
+
+
+def _log_picked_food(food_log_repo: SQLiteFoodLogRepository,
+                     user_id: str,
+                     log_date: date,
+                     catalog: CatalogIngredient,
+                     servings: Decimal) -> None:
+    """Persist a picker selection as an off-plan food log entry."""
+    calories = int(round(float(servings) * catalog.calories_per_serving))
+    description = f"{_fmt_servings(servings)} × {catalog.display_name} ({catalog.serving_label})"
+    food_log_repo.log_off_plan(user_id, log_date, description, calories)
     st.rerun()
+
+
+def _fmt_servings(qty: Decimal) -> str:
+    normalized = qty.normalize()
+    return f"{normalized:f}" if normalized == normalized.to_integral_value() else str(normalized)
