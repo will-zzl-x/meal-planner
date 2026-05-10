@@ -13,6 +13,7 @@ from core.services.seed_recipe_backfiller import (
     SeedRecipeBackfiller,
     _candidate_queries,
     _convert_to_servings,
+    _strip_pending_marker,
 )
 from repositories.sqlite.household_repository import SQLiteHouseholdRepository
 from repositories.sqlite.ingredient_catalog_repository import (
@@ -69,6 +70,35 @@ def test_label_with_explicit_grams_extracted():
                              catalog_serving_label="1 cup (227 g)")
     assert s is not None
     assert 1.0 < float(s) < 1.1
+
+
+def test_strip_pending_marker_removes_and_tidies_whitespace():
+    notes = "[Protein: Chicken]  [calories pending lookup]  cooking note here."
+    assert _strip_pending_marker(notes) == "[Protein: Chicken] cooking note here."
+
+
+def test_strip_pending_marker_no_marker_is_noop():
+    notes = "Plain notes with no marker."
+    assert _strip_pending_marker(notes) == notes
+
+
+def test_backfill_strips_pending_marker_on_successful_match(tmp_path):
+    households, users, catalog, recipes, backfiller = _setup(tmp_path)
+    h = households.create("Smiths")
+    alice = users.create_user("Alice", "a@example.com", household_id=h.id, is_planner=True)
+
+    recipes.save(Recipe(
+        name="Test bowl",
+        ingredients=[Ingredient(name="chicken breast", quantity=Decimal("6"), unit="oz")],
+        base_servings=1,
+        calories_per_serving=0,
+        notes="[Protein: Chicken]  [calories pending lookup]  Marinate overnight.",
+    ), household_id=h.id, created_by_user_id=alice.user_id)
+
+    backfiller.backfill_household(h.id)
+    reloaded = recipes.find_all_by_household(h.id)[0]
+    assert "[calories pending lookup]" not in reloaded.notes
+    assert reloaded.notes == "[Protein: Chicken] Marinate overnight."
 
 
 def test_candidate_queries_progressively_simpler():

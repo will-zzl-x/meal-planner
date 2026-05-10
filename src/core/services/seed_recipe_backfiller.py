@@ -200,6 +200,12 @@ class SeedRecipeBackfiller:
             if recipe.base_servings > 0 else 0
         )
         result.new_calories_per_serving = recipe.calories_per_serving
+        # If the seed recipe carried a "[calories pending lookup]" marker
+        # in its notes, drop it now that we've actually computed calories.
+        # Whitespace around the marker is also tidied so we don't leave a
+        # dangling double-space.
+        if recipe.notes and recipe.calories_per_serving > 0:
+            recipe.notes = _strip_pending_marker(recipe.notes)
         self.recipe_repo.update(recipe, household_id=household_id)
         return result
 
@@ -358,6 +364,21 @@ def _candidate_queries(ingredient_name: str) -> List[str]:
     head = " ".join(cleaned.split()[:2])
     _add(head)
     return queries
+
+
+_PENDING_MARKER = "[calories pending lookup]"
+
+
+def _strip_pending_marker(notes: str) -> str:
+    """Remove the seed-author placeholder marker from a notes string and
+    tidy up the surrounding whitespace so we don't leave double spaces."""
+    if _PENDING_MARKER not in notes:
+        return notes
+    # Strip the marker, then collapse any whitespace runs ≥2 down to one space.
+    out = notes.replace(_PENDING_MARKER, "")
+    import re
+    out = re.sub(r"\s{2,}", " ", out).strip()
+    return out
 
 
 def _strip_parentheticals(s: str) -> str:
