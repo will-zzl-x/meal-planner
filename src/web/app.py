@@ -33,6 +33,7 @@ from core.services.auth_service import (  # noqa: E402
 from core.services.flexible_dieting import BodyCompositionService  # noqa: E402
 from core.services.food_database_service import FoodDatabaseService  # noqa: E402
 from core.services.grocery_list_service import GroceryListService  # noqa: E402
+from core.services.pantry_coverage_service import PantryCoverageService  # noqa: E402
 from core.services.recipe_calorie_calculator import RecipeCalorieCalculator  # noqa: E402
 from core.services.seed_recipe_backfiller import SeedRecipeBackfiller  # noqa: E402
 from repositories.sqlite.food_log_repository import SQLiteFoodLogRepository  # noqa: E402
@@ -120,6 +121,11 @@ def get_catalog_repo() -> SQLiteIngredientCatalogRepository:
 @st.cache_resource
 def get_calorie_calculator() -> RecipeCalorieCalculator:
     return RecipeCalorieCalculator(get_catalog_repo())
+
+
+@st.cache_resource
+def get_coverage_service() -> PantryCoverageService:
+    return PantryCoverageService(get_inventory_repo(), get_catalog_repo())
 
 
 # --- Auth screens ---------------------------------------------------------
@@ -246,6 +252,7 @@ def recipes_page_entry() -> None:
         get_food_database(),
         get_catalog_repo(),
         get_calorie_calculator(),
+        get_coverage_service(),
     )
 
 

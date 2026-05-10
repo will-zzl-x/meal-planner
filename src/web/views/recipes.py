@@ -21,6 +21,10 @@ from core.domain.models import CatalogIngredient, Ingredient, Recipe
 from core.domain.security import SecurityValidationError
 from core.interfaces.user_repository import UserProfile
 from core.services.food_database_service import FoodDatabaseService
+from core.services.pantry_coverage_service import (
+    CoverageReport,
+    PantryCoverageService,
+)
 from core.services.recipe_calorie_calculator import RecipeCalorieCalculator
 from repositories.sqlite.ingredient_catalog_repository import (
     SQLiteIngredientCatalogRepository,
@@ -29,11 +33,21 @@ from repositories.sqlite.recipe_repository import SQLiteRecipeRepository
 from web.views.food_picker import render_food_picker
 
 
+# Filter options for the Recipes page coverage filter (V2-7).
+_COVERAGE_THRESHOLDS = {
+    "Show all": 0.0,
+    "Coverage ≥ 50%": 0.5,
+    "Coverage ≥ 80%": 0.8,
+    "Only 100%": 1.0,
+}
+
+
 def render(user: UserProfile,
            recipe_repo: SQLiteRecipeRepository,
            food_db: FoodDatabaseService,
            catalog_repo: SQLiteIngredientCatalogRepository,
-           calorie_calc: RecipeCalorieCalculator) -> None:
+           calorie_calc: RecipeCalorieCalculator,
+           coverage_svc: PantryCoverageService) -> None:
     st.title("Recipes")
     st.caption(
         "Recipes are shared across your household. "
@@ -44,7 +58,7 @@ def render(user: UserProfile,
         st.warning("You're not in a household yet. Ask the planner for an invite code.")
         return
 
-    _render_recipe_list(user, recipe_repo, food_db, catalog_repo, calorie_calc)
+    _render_recipe_list(user, recipe_repo, food_db, catalog_repo, calorie_calc, coverage_svc)
     if user.is_planner:
         st.divider()
         _render_add_recipe(user, recipe_repo, food_db, catalog_repo, calorie_calc)
@@ -56,14 +70,58 @@ def _render_recipe_list(user: UserProfile,
                         recipe_repo: SQLiteRecipeRepository,
                         food_db: FoodDatabaseService,
                         catalog_repo: SQLiteIngredientCatalogRepository,
-                        calorie_calc: RecipeCalorieCalculator) -> None:
+                        calorie_calc: RecipeCalorieCalculator,
+                        coverage_svc: PantryCoverageService) -> None:
     recipes = recipe_repo.find_all_by_household(user.household_id)
     if not recipes:
         st.info("No recipes yet. " + ("Add your first one below!" if user.is_planner else "Ask the planner to add some."))
         return
 
-    editing_id = st.session_state.get("editing_recipe_id")
+    # V2-7: filter / sort controls. Persist user choices in session state
+    # so they survive reruns when the user adds/removes a recipe.
+    treat_staples, threshold_label, sort_by_cov = _render_filter_row()
+    threshold = _COVERAGE_THRESHOLDS[threshold_label]
+
+    # Compute coverage once per recipe; results drive both the chip in
+    # the header and the missing-list inside the card. Pair with each
+    # recipe so we can sort and filter without re-computing.
+    decorated = []
     for recipe in recipes:
+        coverage = coverage_svc.compute_coverage(
+            recipe, user.household_id,
+            treat_staples_as_available=treat_staples,
+        )
+        decorated.append((recipe, coverage))
+
+    # Apply filter. A recipe with zero catalog-backed ingredients
+    # (legacy / unedited seeds) has total_count == 0 — skip the
+    # filter for those so they always show ("we don't know enough to
+    # exclude them"). Filtering them out aggressively would hide
+    # everything the first time a user lands here.
+    if threshold > 0:
+        decorated = [
+            (r, c) for r, c in decorated
+            if c.total_count == 0 or c.coverage_ratio >= threshold
+        ]
+
+    if sort_by_cov:
+        # Highest coverage first; recipes with no data sink to the bottom.
+        decorated.sort(
+            key=lambda rc: (
+                -rc[1].coverage_ratio if rc[1].total_count else -(-1.0),
+                rc[0].name.lower(),
+            )
+        )
+
+    if not decorated:
+        st.info(
+            "No recipes match that pantry coverage. Try lowering the "
+            "threshold or update the pantry on the Pantry page."
+        )
+        return
+
+    editing_id = st.session_state.get("editing_recipe_id")
+    for recipe, coverage in decorated:
         breakdown = calorie_calc.compute(recipe)
         # Live-computed calories take precedence; only fall back to the stored
         # number for legacy recipes that haven't been re-saved through the picker.
@@ -74,19 +132,56 @@ def _render_recipe_list(user: UserProfile,
         )
         tier_chip = f"[{recipe.tier}] " if recipe.tier else ""
         cal_label = f"{cal_per_serving} cal/serving" if cal_per_serving else "calories TBD"
-        header = f"**{tier_chip}{recipe.name}** — {cal_label} · serves {recipe.base_servings}"
+        coverage_chip = _format_coverage_chip(coverage)
+        header_parts = [f"**{tier_chip}{recipe.name}**", cal_label]
+        if coverage_chip:
+            header_parts.append(coverage_chip)
+        header_parts.append(f"serves {recipe.base_servings}")
+        header = " — ".join(header_parts[:2]) + " · " + " · ".join(header_parts[2:])
         with st.expander(header):
             if editing_id == recipe.id and user.is_planner:
                 _render_edit_recipe(user, recipe_repo, food_db, catalog_repo,
                                     calorie_calc, recipe)
             else:
-                _render_recipe_card(user, recipe_repo, recipe, breakdown)
+                _render_recipe_card(user, recipe_repo, recipe, breakdown, coverage)
+
+
+def _render_filter_row() -> tuple:
+    """Render the staples / coverage-threshold / sort controls and return
+    the user's current choices. Stored under stable session-state keys so
+    they survive across reruns."""
+    cols = st.columns([3, 3, 2])
+    threshold_label = cols[0].selectbox(
+        "Pantry coverage", options=list(_COVERAGE_THRESHOLDS.keys()),
+        index=0, key="recipes_filter_threshold",
+    )
+    treat_staples = cols[1].checkbox(
+        "Treat staples (salt, oil, etc.) as on hand",
+        value=True, key="recipes_filter_staples",
+    )
+    sort_by_cov = cols[2].checkbox(
+        "Sort by coverage", value=False, key="recipes_filter_sort",
+    )
+    return treat_staples, threshold_label, sort_by_cov
+
+
+def _format_coverage_chip(coverage: CoverageReport) -> str:
+    """Short string like '8/11 in pantry' for the recipe header. Empty
+    string when there's nothing meaningful to show (legacy recipe with
+    no catalog-backed ingredients)."""
+    total = coverage.total_count
+    if total == 0:
+        return ""
+    if coverage.have_count == total:
+        return "all in pantry"
+    return f"{coverage.have_count}/{total} in pantry"
 
 
 def _render_recipe_card(user: UserProfile,
                         recipe_repo: SQLiteRecipeRepository,
                         recipe: Recipe,
-                        breakdown) -> None:
+                        breakdown,
+                        coverage: CoverageReport) -> None:
     st.markdown("**Ingredients**")
     if breakdown.lines:
         for line in breakdown.lines:
@@ -111,6 +206,26 @@ def _render_recipe_card(user: UserProfile,
             store = f" `{ing.store}`" if ing.store else ""
             st.write(f"- {qty} {ing.unit} {ing.name}{store}")
         st.caption("_Stored calorie figure — edit through search to compute from real data._")
+
+    # V2-6: pantry coverage block. Only meaningful when we have catalog-
+    # backed ingredients to compare against; legacy recipes get nothing here.
+    if coverage.total_count > 0:
+        if coverage.have_count == coverage.total_count:
+            st.markdown("**Pantry coverage**")
+            st.caption("_All ingredients in pantry._")
+        elif coverage.missing_lines:
+            st.markdown("**Missing from pantry**")
+            for line in coverage.missing_lines:
+                # Use the catalog display name for clarity; the user-typed
+                # ingredient name is on the line above already.
+                shown_name = line.catalog_display_name or line.ingredient_name
+                if line.status == "short" and line.deficit is not None:
+                    st.write(
+                        f"- {shown_name} — short by {_fmt_decimal(line.deficit)} "
+                        f"serving(s)"
+                    )
+                else:
+                    st.write(f"- {shown_name}")
 
     if recipe.instructions:
         st.markdown("**Instructions**")

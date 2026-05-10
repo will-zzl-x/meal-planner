@@ -15,6 +15,7 @@ from web.views.recipes import (
     _DraftIngredient,
     _drafts_to_ingredients,
     _fmt_decimal,
+    _format_coverage_chip,
     _per_serving_total,
 )
 
@@ -103,3 +104,30 @@ def test_fmt_decimal_preserves_meaningful_decimals():
 
 def test_fmt_decimal_integer_shows_no_dot():
     assert _fmt_decimal(Decimal("3")) == "3"
+
+
+# ------------------------------------------------- _format_coverage_chip
+
+def _coverage(have: int, total: int):
+    """Build a CoverageReport-shaped object with a known have/total ratio."""
+    from core.services.pantry_coverage_service import CoverageLine, CoverageReport
+    lines = []
+    for _ in range(have):
+        lines.append(CoverageLine(ingredient_name="x", status="have"))
+    for _ in range(total - have):
+        lines.append(CoverageLine(ingredient_name="x", status="missing"))
+    return CoverageReport(lines=lines)
+
+
+def test_format_coverage_chip_partial():
+    assert _format_coverage_chip(_coverage(8, 11)) == "8/11 in pantry"
+
+
+def test_format_coverage_chip_all():
+    assert _format_coverage_chip(_coverage(5, 5)) == "all in pantry"
+
+
+def test_format_coverage_chip_no_catalog_data_is_blank():
+    """Recipes with zero catalog-backed lines (legacy) get no chip — the
+    ratio would be misleading."""
+    assert _format_coverage_chip(_coverage(0, 0)) == ""
