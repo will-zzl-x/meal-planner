@@ -154,20 +154,29 @@ def _render_off_plan_section(user: UserProfile,
             "dish you're estimating. Search above is preferred since the "
             "calorie figure is exact."
         )
-        with st.form("log_off_plan_quick", clear_on_submit=True):
+        with st.form("log_off_plan_quick", clear_on_submit=False):
             col_desc, col_cal = st.columns([3, 1])
             with col_desc:
-                description = st.text_input("What did you eat?").strip()
+                description = st.text_input(
+                    "What did you eat?", key="quick_log_description",
+                ).strip()
             with col_cal:
                 calories = st.number_input(
                     "Calories", min_value=0, max_value=5000, value=0, step=10,
+                    key="quick_log_calories",
                 )
             submit = st.form_submit_button("Quick log it")
         if submit:
             if not description:
+                # clear_on_submit=False keeps the user's typed values around
+                # so they can fix and resubmit instead of starting over.
                 st.error("Please describe what you ate.")
             else:
                 food_log_repo.log_off_plan(user.user_id, today, description, int(calories))
+                # Clear inputs explicitly on success so the form doesn't
+                # show last entry's values for a possible double-submit.
+                st.session_state.pop("quick_log_description", None)
+                st.session_state.pop("quick_log_calories", None)
                 st.rerun()
 
 

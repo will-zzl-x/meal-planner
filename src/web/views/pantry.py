@@ -51,14 +51,17 @@ def _render_pantry_list(user: UserProfile, repo: SQLiteInventoryRepository) -> N
 def _render_add_item_form(user: UserProfile, repo: SQLiteInventoryRepository) -> None:
     st.subheader("Add an item")
     st.caption("Adding the same name and unit again replaces the quantity.")
-    with st.form("add_pantry_item", clear_on_submit=True):
+    # clear_on_submit=False so the user doesn't lose their typed values
+    # when validation fails (bad qty, name with disallowed chars, etc.).
+    # On success we explicitly pop the input keys before rerun.
+    with st.form("add_pantry_item", clear_on_submit=False):
         col_name, col_qty, col_unit = st.columns([3, 1, 1])
         with col_name:
-            name = st.text_input("Item").strip()
+            name = st.text_input("Item", key="pantry_name").strip()
         with col_qty:
-            qty_str = st.text_input("Qty", value="1")
+            qty_str = st.text_input("Qty", value="1", key="pantry_qty")
         with col_unit:
-            unit = st.selectbox("Unit", _UNIT_OPTIONS, index=0)
+            unit = st.selectbox("Unit", _UNIT_OPTIONS, index=0, key="pantry_unit")
         submit = st.form_submit_button("Add to pantry")
 
     if not submit:
@@ -78,5 +81,8 @@ def _render_add_item_form(user: UserProfile, repo: SQLiteInventoryRepository) ->
         st.error(f"Invalid input: {e}")
         return
 
+    # Reset the inputs only after a successful save.
+    st.session_state.pop("pantry_name", None)
+    st.session_state.pop("pantry_qty", None)
     st.success(f"Added '{name}' to pantry.")
     st.rerun()
