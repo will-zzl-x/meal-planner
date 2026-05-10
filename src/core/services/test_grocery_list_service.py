@@ -143,3 +143,86 @@ def test_output_sorted_by_name():
     svc = GroceryListService()
     items = svc.generate([_entry(rid, 1)], recipes, pantry=[])
     assert [i.name for i in items] == ["chicken breast", "oats", "rice"]
+
+
+# ------------------------------------------------- V2-10: catalog-keyed paths
+
+def _catalog_ingredient(name: str, servings: Decimal,
+                        catalog_id: str, label: str = "100g") -> Ingredient:
+    """Build a catalog-backed Ingredient like the picker would."""
+    return Ingredient(
+        name=name, quantity=servings, unit=label,
+        catalog_ingredient_id=catalog_id, servings=servings,
+    )
+
+
+def test_catalog_keyed_recipe_with_catalog_pantry_subtracts_with_unit_conversion():
+    """1 lb chicken in the pantry should cancel 200 g of recipe demand,
+    via the catalog ref. Both sides use the same catalog id but
+    different free-text quantity units."""
+    rid = "r1"
+    recipe = _recipe(
+        rid, "Bowl",
+        _catalog_ingredient("Chicken", Decimal("2"), "cat-chicken", "100g"),
+        base_servings=1,
+    )
+    # 1 lb = 453.59 g → 4.53 servings of 100g; recipe needs 2.
+    pantry = [InventoryItem(
+        name="chicken", quantity=Decimal("1"), unit="lb",
+        catalog_ingredient_id="cat-chicken",
+    )]
+    svc = GroceryListService()
+    items = svc.generate([_entry(rid, 1)], {rid: recipe}, pantry)
+    # Pantry covers the demand → grocery list omits chicken.
+    assert items == []
+
+
+def test_catalog_keyed_recipe_short_pantry_renders_remainder_in_grams():
+    """100g of pantry, recipe needs 300g → 200g still needed, rendered
+    as grams + 'g' unit."""
+    rid = "r1"
+    recipe = _recipe(
+        rid, "Bowl",
+        _catalog_ingredient("Chicken", Decimal("3"), "cat-chicken", "100g"),
+        base_servings=1,
+    )
+    pantry = [InventoryItem(
+        name="chicken", quantity=Decimal("100"), unit="g",
+        catalog_ingredient_id="cat-chicken",
+    )]
+    svc = GroceryListService()
+    [item] = svc.generate([_entry(rid, 1)], {rid: recipe}, pantry)
+    assert item.unit == "g"
+    assert item.actual_need == "200"
+
+
+def test_legacy_recipe_still_falls_back_to_name_unit_match():
+    """If the recipe ingredient has no catalog ref, the old (name, unit)
+    path still works."""
+    rid = "r1"
+    recipe = _recipe(rid, "Bowl",
+                     Ingredient("rice", Decimal("2"), "cup"))
+    pantry = [InventoryItem(name="rice", quantity=Decimal("1"), unit="cup")]
+    svc = GroceryListService()
+    [item] = svc.generate([_entry(rid, 1)], {rid: recipe}, pantry)
+    assert item.actual_need == "1"
+    assert item.unit == "cup"
+
+
+def test_catalog_pantry_does_not_subtract_from_legacy_recipe():
+    """A catalog-linked pantry row with name 'rice' shouldn't cancel a
+    legacy free-text recipe ingredient 'rice' via the name path —
+    that would double-subtract once we add catalog matching for both
+    sides later."""
+    rid = "r1"
+    recipe = _recipe(rid, "Bowl",
+                     Ingredient("rice", Decimal("1"), "cup"))
+    pantry = [InventoryItem(
+        name="rice", quantity=Decimal("1"), unit="cup",
+        catalog_ingredient_id="cat-rice",
+    )]
+    svc = GroceryListService()
+    items = svc.generate([_entry(rid, 1)], {rid: recipe}, pantry)
+    # The legacy recipe ingredient has no catalog ref, so the catalog-
+    # linked pantry row doesn't touch it; rice still on the list.
+    assert len(items) == 1 and items[0].name == "rice" and items[0].actual_need == "1"
