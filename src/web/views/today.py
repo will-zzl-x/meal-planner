@@ -71,10 +71,26 @@ def _render_totals(user: UserProfile, log_entries: List[FoodLogEntry]) -> None:
     cols[0].metric("Logged", f"{logged} cal")
     if target:
         cols[1].metric("Target", f"{target} cal")
+        # Negative remaining is fine — the metric will just show a leading
+        # minus, which is the natural way to read "you went over."
         cols[2].metric("Remaining", f"{target - logged} cal")
+        # Visual progress bar (clamped to [0, 1]) so the relationship
+        # between logged and target is graspable at a glance — much more
+        # useful on a small screen than three side-by-side numbers.
+        ratio = max(0.0, min(1.0, logged / target)) if target > 0 else 0.0
+        st.progress(ratio, text=_progress_text(logged, target))
     else:
         cols[1].metric("Target", "—")
         cols[2].caption("Set a target on My Profile to see remaining.")
+
+
+def _progress_text(logged: int, target: int) -> str:
+    """Short overlay text for the progress bar."""
+    pct = round(100 * logged / target) if target > 0 else 0
+    if logged > target:
+        over = logged - target
+        return f"{logged} / {target} cal · {pct}% (over by {over})"
+    return f"{logged} / {target} cal · {pct}%"
 
 
 def _render_planned_meals(user: UserProfile,
