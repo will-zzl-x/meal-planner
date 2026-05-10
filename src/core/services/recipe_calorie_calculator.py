@@ -64,8 +64,12 @@ class RecipeCalorieCalculator:
 
             line_cal = int(round(float(ingredient.servings) * catalog.calories_per_serving))
             total += line_cal
+            # Display the user's typed name (preserved by migration 010 via
+            # recipe_ingredients.display_name) rather than the catalog's
+            # canonical name. The catalog still drives the math; only the
+            # label shown on screen comes from what the user wrote.
             lines.append(IngredientCalorieLine(
-                name=catalog.display_name,
+                name=ingredient.name,
                 servings=ingredient.servings,
                 serving_label=catalog.serving_label,
                 calories_per_serving=catalog.calories_per_serving,

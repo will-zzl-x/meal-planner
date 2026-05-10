@@ -92,6 +92,36 @@ def test_missing_catalog_row_treated_as_unaccounted(tmp_path):
     assert result.unaccounted_count == 1
 
 
+def test_line_uses_ingredient_name_not_catalog_display_name(tmp_path):
+    """The calorie line shown to the user should carry the *ingredient*'s
+    name (the user-typed phrasing preserved on each recipe row), not the
+    catalog row's canonical name. This avoids a recipe whose seed text
+    said 'Skinless chicken thighs (~4)' visibly morphing into 'Chicken
+    Breast' once it's matched to a catalog row."""
+    catalog, calc = _setup(tmp_path)
+    cid = _seed_catalog(catalog, "Chicken Breast", 165, external_id="c1")
+
+    recipe = Recipe(
+        name="Bowl",
+        ingredients=[
+            Ingredient(
+                name="Skinless chicken breasts (~4)",
+                quantity=Decimal("1"),
+                unit="100g",
+                catalog_ingredient_id=cid,
+                servings=Decimal("1"),
+            ),
+        ],
+        base_servings=1,
+        calories_per_serving=0,
+    )
+    result = calc.compute(recipe)
+    assert len(result.lines) == 1
+    assert result.lines[0].name == "Skinless chicken breasts (~4)"
+    # And the math is still driven by the catalog's per-serving value.
+    assert result.lines[0].calories_per_serving == 165
+
+
 def test_per_serving_division(tmp_path):
     catalog, calc = _setup(tmp_path)
     cid = _seed_catalog(catalog, "Cake", 1000)
