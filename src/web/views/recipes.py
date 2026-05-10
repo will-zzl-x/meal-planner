@@ -13,7 +13,7 @@ to lock in real nutrition (slice 8e backfill will do the seed batch).
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 import streamlit as st
 
@@ -148,7 +148,7 @@ def _render_add_recipe(user: UserProfile,
         widget_key="add_picker",
         food_db=food_db,
         catalog_repo=catalog_repo,
-        on_pick=lambda c, s: _append_draft(draft_key, c, s),
+        on_pick=lambda c, s, store: _append_draft(draft_key, c, s, store),
     )
 
     if drafts:
@@ -217,7 +217,7 @@ def _render_edit_recipe(user: UserProfile,
         widget_key=f"edit_picker_{recipe.id}",
         food_db=food_db,
         catalog_repo=catalog_repo,
-        on_pick=lambda c, s: _append_draft(draft_key, c, s),
+        on_pick=lambda c, s, store: _append_draft(draft_key, c, s, store),
     )
 
     st.markdown("**Currently in this recipe**")
@@ -289,21 +289,29 @@ def _render_edit_recipe(user: UserProfile,
 
 class _DraftIngredient:
     """Lightweight in-memory record of a picker-added ingredient. Held in
-    session state until the form is saved."""
-    __slots__ = ("catalog_id", "display_name", "serving_label",
-                 "calories_per_serving", "servings")
+    session state until the form is saved.
 
-    def __init__(self, catalog: CatalogIngredient, servings: Decimal):
+    `store` is the optional per-ingredient store routing label (e.g.
+    "Costco", "Walmart") — preserved so picker-saved recipes don't
+    silently lose the grocery-list-routing info that seed recipes had.
+    """
+    __slots__ = ("catalog_id", "display_name", "serving_label",
+                 "calories_per_serving", "servings", "store")
+
+    def __init__(self, catalog: CatalogIngredient, servings: Decimal,
+                 store: Optional[str] = None):
         self.catalog_id = catalog.id
         self.display_name = catalog.display_name
         self.serving_label = catalog.serving_label
         self.calories_per_serving = catalog.calories_per_serving
         self.servings = servings
+        self.store = store
 
 
-def _append_draft(draft_key: str, catalog: CatalogIngredient, servings: Decimal) -> None:
+def _append_draft(draft_key: str, catalog: CatalogIngredient, servings: Decimal,
+                  store: Optional[str] = None) -> None:
     drafts: List[_DraftIngredient] = st.session_state.setdefault(draft_key, [])
-    drafts.append(_DraftIngredient(catalog, servings))
+    drafts.append(_DraftIngredient(catalog, servings, store))
 
 
 def _clear_draft(draft_key: str) -> None:
@@ -336,7 +344,7 @@ def _build_initial_drafts(recipe: Recipe,
         catalog = catalog_repo.find_by_id(ing.catalog_ingredient_id)
         if catalog is None:
             continue
-        drafts.append(_DraftIngredient(catalog, ing.servings))
+        drafts.append(_DraftIngredient(catalog, ing.servings, ing.store))
     return drafts
 
 
@@ -344,12 +352,14 @@ def _drafts_to_ingredients(drafts: List[_DraftIngredient]) -> List[Ingredient]:
     """Convert the in-memory draft rows into Ingredient records the recipe
     repo can persist. We set name/quantity/unit for compatibility with the
     legacy fields and also populate catalog_ingredient_id + servings so the
-    calorie calculator can reuse the link on read."""
+    calorie calculator can reuse the link on read. `store` is preserved so
+    picker-saved recipes can be routed by the grocery list."""
     return [
         Ingredient(
             name=d.display_name,
             quantity=d.servings,
             unit=d.serving_label,
+            store=d.store,
             catalog_ingredient_id=d.catalog_id,
             servings=d.servings,
         )

@@ -138,9 +138,14 @@ def _render_off_plan_section(user: UserProfile,
         widget_key="today_log_picker",
         food_db=food_db,
         catalog_repo=catalog_repo,
-        on_pick=lambda c, s: _log_picked_food(food_log_repo, user.user_id, today, c, s),
+        # Store routing is a recipe-grocery concept; food-log entries don't
+        # need it, so the picker hides the input here.
+        on_pick=lambda c, s, _store: _log_picked_food(
+            food_log_repo, user.user_id, today, c, s,
+        ),
         label="What did you eat?",
         placeholder="e.g. banana, Chobani yogurt, frozen pizza",
+        show_store=False,
     )
 
     with st.expander("Quick log (free text + calories)"):
