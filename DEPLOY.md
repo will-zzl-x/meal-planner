@@ -1,111 +1,98 @@
-# Deploying the meal planner so friends can use it
+# Deploying the meal planner — phone-only walkthrough
 
-This walks through hosting the app on **Fly.io's free tier**, with a
-public HTTPS URL, a persistent database that survives restarts, and
-auto-deploys on every push to `main`.
+This deploys the app to **Fly.io's free tier** without ever opening a
+terminal. You'll do everything from your phone in Safari/Chrome.
 
-You'll do this once. After that, sharing changes is just `git push`.
+You'll do it once. After that, every time changes land in the repo,
+GitHub redeploys the app automatically.
 
 ## What you'll get
 
-- A URL like `https://meal-planner.fly.dev` you can text to friends.
-- The SQLite database lives on a 1 GB persistent volume — restarts and
-  redeploys don't wipe it.
+- A URL like `https://meal-planner-zzlx.fly.dev` you can text to friends.
+- The database lives on a 1 GB persistent disk that survives restarts
+  and redeploys.
 - Free tier: the app sleeps after ~15 min of no traffic; the next
   visitor waits 20–30 sec for it to wake up. Then it stays warm.
-- 2–10 households fits easily inside the free allowance.
+- 2–10 households fits comfortably inside the free allowance.
 
-## Step 1 — One-time setup (needs a terminal)
+## Step 1 — Sign up at Fly.io (5 min)
 
-You need a terminal **once** to create the Fly app and the storage
-volume. After this, you can do everything from a phone via GitHub.
+1. Open **https://fly.io** in Safari and tap **Get Started**.
+2. Sign up (email + password, or use GitHub login).
+3. Fly asks for a credit card. **They don't charge you unless you
+   exceed the free tier** — the card is just to prevent abuse. The app
+   at our scale stays well inside free.
 
-If you don't have a laptop handy, you can use **GitHub Codespaces**:
-open the repo on github.com from your phone → green "Code" button →
-"Codespaces" tab → "Create codespace". That gives you a terminal in
-your browser.
+## Step 2 — Generate a deploy token (2 min)
 
-In the terminal:
+A *deploy token* is a long secret string that lets GitHub deploy on
+your behalf. Think of it as a password just for deployments.
 
-```bash
-# 1. Install flyctl (Fly.io's CLI).
-curl -L https://fly.io/install.sh | sh
+1. In the Fly dashboard, tap your **avatar (top right) → Account
+   Settings → Access Tokens**.
+2. Tap **Create access token**. Name it anything (e.g. "github
+   deploy").
+3. Copy the token that appears — it starts with `FlyV1`. **It's only
+   shown once**, so copy it somewhere safe (your Notes app is fine,
+   delete it after step 3).
 
-# 2. Sign up / log in. Opens a browser tab the first time.
-fly auth signup    # or `fly auth login` if you already have an account
+## Step 3 — Add the token to GitHub (2 min)
 
-# 3. From inside this repo, create the app.
-#    Fly will read fly.toml, prompt for an app name (default: meal-planner —
-#    pick something unique), and a region (default: iad = Virginia).
-#    When it asks "Would you like to deploy now?" — say NO. We need to
-#    create the storage volume first.
-fly launch --copy-config --no-deploy
+1. In Safari, open `https://github.com/will-zzl-x/meal-planner`.
+2. Tap **Settings** → in the left sidebar, **Secrets and variables →
+   Actions**.
+3. Tap **New repository secret**.
+4. Name: `FLY_API_TOKEN` (exactly that, all caps).
+5. Secret: paste the token from Step 2.
+6. Tap **Add secret**.
 
-# 4. Create the persistent volume that holds the database.
-#    Use the same region you picked above (replace iad if different).
-fly volumes create meal_planner_data --size 1 --region iad
+You can now delete the token from your Notes app — GitHub has it.
 
-# 5. Deploy.
-fly deploy
+## Step 4 — Run the deploy (3 min, then ~5 min waiting)
 
-# 6. Open the live app.
-fly open
-```
+1. Still on GitHub, tap the **Actions** tab at the top of the repo.
+2. In the left sidebar, tap **Deploy to Fly.io**.
+3. Tap the **Run workflow** dropdown on the right. Pick the branch you
+   want to deploy (probably `claude/review-recent-changes-...` for the
+   first time, or `main` later). Tap **Run workflow**.
+4. Refresh the page after a few seconds. A new run appears at the top
+   — tap into it to watch progress. The "Deploy app" job has steps
+   like *Create Fly app*, *Create volume*, *Deploy*. They run top to
+   bottom.
+5. When all steps go green (~5 min total), the last step prints the
+   URL. Open it in Safari — that's your live app.
 
-That last command opens the URL in your browser. Copy it — that's what
-you share with friends.
+## After the first deploy
 
-## Step 2 — Set up auto-deploy from GitHub (so you never need the terminal again)
+Every push to `main` (or to any working branch starting with
+`claude/`) automatically redeploys. You can also re-trigger manually
+from the Actions tab any time.
 
-After the first manual deploy works, set this up so future updates
-deploy themselves:
+## If a step fails
 
-```bash
-# Generate a deploy token.
-fly tokens create deploy
-# Copy the long string it prints (starts with "FlyV1 ...").
-```
+The Actions UI will show a red X on whichever step broke. Tap it to
+see the error message. Most common ones:
 
-Then on your phone:
+- **"Name has already been taken"** in *Create Fly app*: the app name
+  `meal-planner-zzlx` is in use by someone else on Fly. Tell me and
+  I'll change it to something unique.
+- **"FLY_API_TOKEN was empty"**: the secret wasn't set in Step 3.
+  Re-do that step, then re-run the workflow from the Actions tab.
+- **Build error in *Deploy* step**: a Python dependency issue. Copy
+  the error and tell me — I'll fix the Dockerfile or requirements.
 
-1. Open `github.com/will-zzl-x/meal-planner` in any browser.
-2. Settings → Secrets and variables → Actions → **New repository secret**.
-3. Name: `FLY_API_TOKEN`. Value: paste the token from above. Save.
+## Backing up the database (optional, do this every few weeks)
 
-From now on, every time changes land on the `main` branch, GitHub
-runs `.github/workflows/fly-deploy.yml`, which redeploys to Fly. You'll
-see a green check (or red X) on the commit.
-
-## Common operations
-
-```bash
-# See logs (helpful when something's wrong):
-fly logs
-
-# Restart the app (e.g. after a config change):
-fly apps restart meal-planner
-
-# Connect to the live SQLite DB (advanced — read-only safer):
-fly ssh console
-sqlite3 /data/meal_planner.db
-```
-
-## Backing up the database
-
-The volume is durable, but it's still a single copy. To download a
-backup of the live DB to your laptop:
+This needs a brief terminal session (a friend's laptop or a one-time
+Codespace). One command downloads a snapshot of the live DB:
 
 ```bash
-fly ssh sftp get /data/meal_planner.db ./backup-$(date +%Y%m%d).db
+fly ssh sftp get /data/meal_planner.db ./backup-$(date +%Y%m%d).db -a meal-planner-zzlx
 ```
 
-Worth doing every few weeks, or before risky migrations.
+Email yourself the file. Done.
 
-## If something breaks
+## Upgrading off the free tier (only if cold starts get annoying)
 
-- **App won't start after deploy**: `fly logs` shows the crash. Most
-  likely a missing dependency in `requirements.txt`.
-- **Database wiped after deploy**: the volume isn't mounted. Check
-  `fly volumes list` — should show `meal_planner_data` attached.
-- **Cold start feels slow**: that's the free tier. Upgrade with
-  `fly scale count 1` + paid plan to keep it always warm (~$5/month).
+If you outgrow free, change the `min_machines_running` line in
+`fly.toml` from `0` to `1`. That keeps the app always-on (~$5/month).

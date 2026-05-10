@@ -3,7 +3,7 @@
 # those into this file. The volume mount and service config below stay
 # as-is.
 
-app = "meal-planner"  # rename via `fly apps rename` if taken
+app = "meal-planner-zzlx"  # must match FLY_APP in .github/workflows/fly-deploy.yml
 primary_region = "iad"  # change via `fly launch` prompt if you prefer another
 
 [build]
