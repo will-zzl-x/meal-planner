@@ -283,6 +283,12 @@ def profile_page_entry() -> None:
     profile.render(st.session_state.user, get_user_repo(), get_body_composition_service())
 
 
+def household_page_entry() -> None:
+    from web.views import household
+    _render_sidebar()
+    household.render(st.session_state.user, get_household_repo(), get_user_repo())
+
+
 def render_authenticated() -> None:
     pages = [
         st.Page(today_page_entry, title="Today", icon=":material/today:", default=True),
@@ -290,6 +296,7 @@ def render_authenticated() -> None:
         st.Page(grocery_list_page_entry, title="Grocery List", icon=":material/shopping_cart:"),
         st.Page(recipes_page_entry, title="Recipes", icon=":material/menu_book:"),
         st.Page(pantry_page_entry, title="Pantry", icon=":material/kitchen:"),
+        st.Page(household_page_entry, title="Household", icon=":material/home:"),
         st.Page(profile_page_entry, title="My Profile", icon=":material/person:"),
     ]
     pg = st.navigation(pages)
