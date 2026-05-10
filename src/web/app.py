@@ -252,7 +252,12 @@ def recipes_page_entry() -> None:
 def pantry_page_entry() -> None:
     from web.views import pantry
     _render_sidebar()
-    pantry.render(st.session_state.user, get_inventory_repo())
+    pantry.render(
+        st.session_state.user,
+        get_inventory_repo(),
+        get_food_database(),
+        get_catalog_repo(),
+    )
 
 
 def weekly_plan_page_entry() -> None:
