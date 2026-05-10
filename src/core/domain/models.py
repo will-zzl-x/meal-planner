@@ -139,3 +139,23 @@ class CatalogIngredient:
     def display_name(self) -> str:
         """Brand-prefixed name for UI display (Chobani — Greek Yogurt 5%)."""
         return f"{self.brand} — {self.name}" if self.brand else self.name
+
+    @classmethod
+    def from_food_item(cls, item: "FoodItem") -> "CatalogIngredient":
+        """Translate a food-DB search result into a catalog row ready to save.
+
+        Used in two places: the picker UI (when the user clicks Add) and
+        the seed recipe backfiller (when an automated match is found).
+        """
+        return cls(
+            id="",
+            name=item.name,
+            serving_label=item.unit,
+            calories_per_serving=int(item.calories_per_unit),
+            protein_per_serving=item.protein_per_unit,
+            carbs_per_serving=item.carbs_per_unit,
+            fat_per_serving=item.fats_per_unit,
+            brand=item.brand,
+            source=item.source or "manual",
+            external_id=item.food_id,
+        )

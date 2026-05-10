@@ -277,9 +277,10 @@ class SQLiteRecipeRepository(IRecipeRepository):
         ingredients: List[Ingredient] = []
         for ing in cursor.fetchall():
             qty = Decimal(str(ing['quantity']))
-            # If the row came from the food-database picker, surface the
-            # catalog ref + servings count so consumers can compute calories.
-            picker_backed = ing['source'] in ('usda', 'openfoodfacts', 'manual')
+            # Any non-null `source` means the ingredient row carries real
+            # per-serving nutrition (USDA / Open Food Facts / sample / manual).
+            # Legacy zero-nutrition stubs created before 8a have source = NULL.
+            picker_backed = ing['source'] is not None
             ingredients.append(Ingredient(
                 name=ing['name'],
                 quantity=qty,

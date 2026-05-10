@@ -23,7 +23,7 @@ from typing import Callable
 
 import streamlit as st
 
-from core.domain.models import CatalogIngredient, FoodItem
+from core.domain.models import CatalogIngredient
 from core.services.food_database_service import FoodDatabaseService
 from repositories.sqlite.ingredient_catalog_repository import (
     SQLiteIngredientCatalogRepository,
@@ -92,21 +92,5 @@ def _render_result_row(*,
         except InvalidOperation:
             st.warning("Servings must be a positive number.")
             return
-        catalog = catalog_repo.save(_food_item_to_catalog(item))
+        catalog = catalog_repo.save(CatalogIngredient.from_food_item(item))
         on_pick(catalog, servings)
-
-
-def _food_item_to_catalog(item: FoodItem) -> CatalogIngredient:
-    """Translate a search result into a catalog row ready for upsert."""
-    return CatalogIngredient(
-        id="",
-        name=item.name,
-        serving_label=item.unit,
-        calories_per_serving=int(item.calories_per_unit),
-        protein_per_serving=item.protein_per_unit,
-        carbs_per_serving=item.carbs_per_unit,
-        fat_per_serving=item.fats_per_unit,
-        brand=item.brand,
-        source=item.source or "manual",
-        external_id=item.food_id,
-    )
