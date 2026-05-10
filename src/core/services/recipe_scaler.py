@@ -68,12 +68,26 @@ class RecipeScaler:
                 scaled_quantity
             )
             
+            # Catalog-backed ingredients (slice 8b+) carry a
+            # `catalog_ingredient_id` and a `servings` count separate from
+            # the legacy quantity field. When scaling, we have to scale
+            # `servings` too — otherwise the calorie calculator will read
+            # the original servings count and report the wrong total. We
+            # also preserve the catalog reference and the per-ingredient
+            # store routing.
+            scaled_servings = (
+                ingredient.servings * scale_factor
+                if ingredient.servings is not None else None
+            )
             scaled_ingredients.append(Ingredient(
                 name=ingredient.name,
                 quantity=practical_quantity,
-                unit=ingredient.unit
+                unit=ingredient.unit,
+                store=ingredient.store,
+                catalog_ingredient_id=ingredient.catalog_ingredient_id,
+                servings=scaled_servings,
             ))
-            
+
         return scaled_ingredients
     
     def _round_to_practical(self, ingredient_name: str, unit: str, quantity: Decimal) -> Decimal:
