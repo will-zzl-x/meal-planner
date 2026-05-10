@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from typing import TYPE_CHECKING
+
 from core.interfaces.household_repository import Household, IHouseholdRepository
 from core.interfaces.recipe_repository import IRecipeRepository
 from core.interfaces.user_repository import IUserRepository, UserProfile
@@ -19,6 +21,12 @@ from core.services.password_hashing import (
     verify_password,
 )
 from core.seed_recipes import seed_recipes_for_household
+
+if TYPE_CHECKING:
+    # Type-only — avoids a hard runtime dependency on the backfiller
+    # (and its repo concretes) when AuthService is used in test fixtures
+    # that don't need backfill behavior.
+    from core.services.seed_recipe_backfiller import SeedRecipeBackfiller
 
 
 class AuthError(Exception):
@@ -50,10 +58,17 @@ class AuthService:
                  household_repo: IHouseholdRepository,
                  *,
                  recipe_repo: Optional[IRecipeRepository] = None,
+                 backfiller: Optional["SeedRecipeBackfiller"] = None,
                  hash_iterations: int = DEFAULT_ITERATIONS):
         self.user_repo = user_repo
         self.household_repo = household_repo
         self.recipe_repo = recipe_repo  # When set, register_household seeds starter recipes.
+        # When set alongside recipe_repo, the seeded recipes are auto-
+        # backfilled with real catalog references right after seeding so
+        # the new household sees real calorie numbers immediately. The
+        # backfill is best-effort — anything it can't match stays as
+        # legacy free-text and the planner can fix via the picker.
+        self.backfiller = backfiller
         self._hash_iterations = hash_iterations
 
     def register_household(self,
@@ -77,6 +92,14 @@ class AuthService:
         )
         if self.recipe_repo is not None:
             seed_recipes_for_household(self.recipe_repo, household.id, user.user_id)
+            if self.backfiller is not None:
+                # Best-effort: failures in the backfiller (network, etc.)
+                # must not block household registration. The user can always
+                # rerun the backfill from the CLI later.
+                try:
+                    self.backfiller.backfill_household(household.id)
+                except Exception:
+                    pass
         return HouseholdRegistration(user=user, household=household)
 
     def register_member(self,

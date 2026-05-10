@@ -118,6 +118,52 @@ def test_register_household_seeds_recipes_when_recipe_repo_supplied(tmp_path):
     assert {r.name for r in seeded} == {r.name for r in expected}
 
 
+def test_register_household_runs_backfiller_when_supplied(tmp_path):
+    """When a backfiller is wired in, register_household triggers it after
+    seed recipes are saved so the new household sees real calories on
+    day one."""
+    db = str(tmp_path / "auth.db")
+    recipes = SQLiteRecipeRepository(db)
+
+    class _SpyBackfiller:
+        def __init__(self):
+            self.calls = []
+        def backfill_household(self, household_id):
+            self.calls.append(household_id)
+
+    spy = _SpyBackfiller()
+    svc = AuthService(
+        user_repo=SQLiteUserRepository(db),
+        household_repo=SQLiteHouseholdRepository(db),
+        recipe_repo=recipes,
+        backfiller=spy,
+        hash_iterations=_FAST_ITERATIONS,
+    )
+    result = svc.register_household("Alice", "alice@example.com", "pw", "Smiths")
+    assert spy.calls == [result.household.id]
+
+
+def test_register_household_swallows_backfiller_errors(tmp_path):
+    """A backfiller failure must not block registration."""
+    db = str(tmp_path / "auth.db")
+    recipes = SQLiteRecipeRepository(db)
+
+    class _BoomBackfiller:
+        def backfill_household(self, household_id):
+            raise RuntimeError("network on fire")
+
+    svc = AuthService(
+        user_repo=SQLiteUserRepository(db),
+        household_repo=SQLiteHouseholdRepository(db),
+        recipe_repo=recipes,
+        backfiller=_BoomBackfiller(),
+        hash_iterations=_FAST_ITERATIONS,
+    )
+    # Should not raise.
+    result = svc.register_household("Alice", "alice@example.com", "pw", "Smiths")
+    assert result.user.user_id
+
+
 def test_register_household_skips_seeding_when_no_recipe_repo(tmp_path):
     svc = _service(tmp_path)  # constructed without recipe_repo
     result = svc.register_household("Alice", "alice@example.com", "pw", "Smiths")

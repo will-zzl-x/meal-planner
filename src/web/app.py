@@ -34,6 +34,7 @@ from core.services.flexible_dieting import BodyCompositionService  # noqa: E402
 from core.services.food_database_service import FoodDatabaseService  # noqa: E402
 from core.services.grocery_list_service import GroceryListService  # noqa: E402
 from core.services.recipe_calorie_calculator import RecipeCalorieCalculator  # noqa: E402
+from core.services.seed_recipe_backfiller import SeedRecipeBackfiller  # noqa: E402
 from repositories.sqlite.food_log_repository import SQLiteFoodLogRepository  # noqa: E402
 from repositories.sqlite.household_repository import SQLiteHouseholdRepository  # noqa: E402
 from repositories.sqlite.ingredient_catalog_repository import (  # noqa: E402
@@ -52,10 +53,17 @@ DB_PATH = os.environ.get("MEAL_PLANNER_DB", "meal_planner.db")
 
 @st.cache_resource
 def get_auth_service() -> AuthService:
+    recipe_repo = SQLiteRecipeRepository(DB_PATH)
+    catalog_repo = SQLiteIngredientCatalogRepository(DB_PATH)
+    food_db = FoodDatabaseService()
     return AuthService(
         user_repo=SQLiteUserRepository(DB_PATH),
         household_repo=SQLiteHouseholdRepository(DB_PATH),
-        recipe_repo=SQLiteRecipeRepository(DB_PATH),  # auto-seeds new households
+        recipe_repo=recipe_repo,           # auto-seeds new households
+        # Auto-backfill seeded recipes so calorie figures are real on
+        # day one. The backfiller is best-effort; AuthService swallows
+        # any error so registration never fails because of network.
+        backfiller=SeedRecipeBackfiller(food_db, catalog_repo, recipe_repo),
     )
 
 
