@@ -51,6 +51,7 @@ def render_food_picker(
     """
     results_key = f"{widget_key}_results"
     query_key = f"{widget_key}_query"
+    last_query_key = f"{widget_key}_last_query"
 
     with st.form(f"{widget_key}_form", clear_on_submit=False):
         query = st.text_input(label, placeholder=placeholder, key=query_key)
@@ -61,8 +62,20 @@ def render_food_picker(
             st.session_state[results_key] = food_db.search_food_database(
                 query.strip(), limit=15,
             )
+        st.session_state[last_query_key] = query.strip()
 
     results = st.session_state.get(results_key) or []
+    last_query = st.session_state.get(last_query_key)
+
+    # Empty-results feedback: only after at least one search has run, so
+    # we don't shout "no results" before the user even searches.
+    if last_query and not results:
+        st.caption(
+            f"No matches for '{last_query}' in USDA, Open Food Facts, or "
+            "the offline list. Try a simpler query (e.g. 'rice' instead of "
+            "'short grain Japanese rice'), or use the Quick log fallback."
+        )
+        return
     if not results:
         return
 
@@ -88,20 +101,20 @@ def _render_result_row(*,
         name_line = f"{item.brand} — {item.name}"
     source_tag = (item.source or "?").upper()
 
-    # Layout: name / servings / [store?] / Add. The unit is shown inline
-    # in the name line ("X cal per Y") so we drop the redundant "× unit"
-    # caption that previous versions had — saves precious horizontal space.
-    if show_store:
-        cols = st.columns([5, 2, 2, 1])
-        name_col, servings_col, store_col, add_col = cols
-    else:
-        cols = st.columns([5, 2, 1])
-        name_col, servings_col, add_col = cols
-        store_col = None
-
-    name_col.markdown(
+    # Vertical stacking: name + nutrition spans the full width on its own
+    # line so long catalog names ("Yogurt, Greek, plain, nonfat") aren't
+    # squeezed into a 60% column. The controls live on a second row where
+    # each control gets meaningful width on a 375 px iPhone screen.
+    st.markdown(
         f"**{name_line}**  \n_{item.calories_per_unit} cal per {item.unit} · {source_tag}_"
     )
+
+    if show_store:
+        servings_col, store_col, add_col = st.columns([2, 2, 1])
+    else:
+        servings_col, add_col = st.columns([2, 1])
+        store_col = None
+
     servings_str = servings_col.text_input(
         "Servings", value="1", key=f"{row_key}_servings", label_visibility="collapsed",
         placeholder="Servings",
@@ -113,13 +126,17 @@ def _render_result_row(*,
             placeholder="Store (optional)",
         ).strip() or None
 
-    if add_col.button("Add", key=f"{row_key}_add"):
+    if add_col.button("Add", key=f"{row_key}_add", use_container_width=True):
         servings = _parse_servings(servings_str)
         if servings is None:
             st.warning("Servings must be a positive number.")
             return
         catalog = catalog_repo.save(CatalogIngredient.from_food_item(item))
         on_pick(catalog, servings, store_value)
+
+    # Visual separator so adjacent rows don't blend together when the
+    # name line is long enough to wrap.
+    st.divider()
 
 
 def _parse_servings(s: str) -> Optional[Decimal]:
