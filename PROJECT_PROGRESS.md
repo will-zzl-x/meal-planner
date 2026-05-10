@@ -18,26 +18,37 @@ The MVP is functionally complete and on branch `claude/review-recent-changes-JVO
 - Recipes: build via search-and-pick from USDA / Open Food Facts; calories
   computed live from picked ingredients × servings; per-ingredient store
   routing preserved; manual fallback for items the databases don't cover.
+  Recipe cards show pantry coverage ("8/11 in pantry") with a
+  "Missing from pantry" list inside.
 - Auto-seeded recipes: 13 starter recipes are added when a household is
   registered, and immediately auto-backfilled against the food databases
   so calorie figures are real on day one.
 - Weekly plan: planner schedules recipes to (day, meal_type) slots.
-- Grocery list: weekly plan minus pantry, aggregated by ingredient.
+- Pantry: items can be linked to catalog entries via search; planner-only
+  Quick check-in mode for fast tap-through review (Have it / Out /
+  Adjust per row); "Last reviewed N days ago" caption.
+- Grocery list: weekly plan minus pantry. Catalog-keyed subtraction
+  with unit conversion (1 lb pantry chicken cancels 200g recipe demand);
+  legacy name+unit fallback for items without catalog refs. Stale-pantry
+  banner reminds the user to do a check-in if the pantry is >3 days old.
 - Today: per-user food log; tick planned meals; log off-plan via the same
   food picker (or a free-text "quick log" for things not in any DB);
   calorie progress bar against daily target.
 - Profile: body-composition fields drive a per-user daily calorie target.
 
 ### Schema state
-Migrations 001–010 applied. Most recent ones:
+Migrations 001–011 applied. Most recent ones:
 - 008 — recipe metadata (notes, tier) and per-ingredient store
 - 009 — widened `ingredients` catalog with serving_label + per-serving
   nutrition + (source, external_id) for caching real DB hits
 - 010 — `recipe_ingredients.display_name` so the user-typed ingredient
   name survives a backfill (was being overwritten by catalog name)
+- 011 — `inventory.catalog_ingredient_id` so pantry rows can link to
+  the same catalog rows recipe ingredients use, enabling exact
+  coverage matching
 
 ### Test coverage
-205 tests in `src/`, all passing at HEAD. Coverage:
+226 tests in `src/`, all passing at HEAD. Coverage:
 - All services have unit tests (auth, calorie calculator, food DB,
   grocery list, password hashing, recipe scaler, seed backfiller, etc).
 - All SQLite repos have tests (households, users, recipes, meal plans,
@@ -104,17 +115,51 @@ Migrations 001–010 applied. Most recent ones:
   don't cover.
 - Task 13: Unit tests for view-helper pure functions.
 - Task 14: Repository tests for food log, meal plans, inventory.
-- Task 15: This document.
+- Task 15: Refresh of this document.
+
+### V2 — Pantry coverage & fast check-in (11 tasks, 11 commits)
+- V2-1: Migration 011 — `inventory.catalog_ingredient_id`. Pantry
+  rows can now reference the same catalog rows recipes use.
+- V2-2: `InventoryItem` + repo carry the new column on every read /
+  write / upsert path. Repo tests extended.
+- V2-3: Pantry add form gets a "Link to a food database entry"
+  expander above the existing form. Quantity and unit stay in
+  natural shopping units (lb, cup, oz, g) — the catalog ref is
+  metadata for matching, not the user's display unit.
+- V2-4: New `pantry_backfiller.py` + `scripts/backfill_pantry.py`
+  CLI for retroactive resolution of legacy pantry rows.
+- V2-5: New `pantry_coverage_service.py` — answers "how much of
+  this recipe do I already have?" via catalog id matching with
+  unit conversion. Hard-coded staples list (toggleable).
+- V2-6: Recipe cards show a coverage chip in the header
+  ("8/11 in pantry") and a "Missing from pantry" / "All ingredients
+  in pantry" block inside.
+- V2-7: Recipes page filter row — coverage threshold, treat-staples
+  toggle, sort-by-coverage. Recipes with no catalog-backed lines
+  are exempt from the filter so brand-new households still see
+  their seeds.
+- V2-8: Pantry page Quick check-in mode. Each row gets Have it /
+  Out / Adjust controls; a "Last reviewed: N days ago" caption
+  drives the user toward keeping inventory current.
+- V2-9: Stale-pantry banner on the Grocery list page.
+- V2-10: Grocery list service uses catalog-keyed subtraction with
+  unit conversion. "1 lb chicken" in pantry now correctly cancels
+  200g of recipe demand. Legacy (name, unit) match preserved as
+  fallback when either side lacks a catalog ref.
+- V2-11: This update.
+
+Test count after V2: 226 (up from 205 at the start of V2).
 
 ---
 
-## Outstanding (V2 candidates, in rough priority order)
+## Outstanding (V3 candidates, in rough priority order)
 
-1. **First end-to-end click-through on iPhone Safari.** Code-review
-   only so far; real device pass is the highest-value next step.
-2. **Macros breakdown (P/C/F) on Today.** Deferred from Task 10 —
-   needs either macros stored on `food_log_entries` at log time or
-   N catalog joins per render.
+1. **First end-to-end click-through on iPhone Safari.** Still
+   code-review only — real device pass is the highest-value next
+   step.
+2. **Macros breakdown (P/C/F) on Today.** Deferred from overnight
+   Task 10 — needs either macros stored on `food_log_entries` at
+   log time or N catalog joins per render.
 3. **Short human-friendly invite codes.** UUID is unguessable but
    ugly to dictate over a phone.
 4. **Bias picker results toward the household's already-cached
@@ -122,11 +167,17 @@ Migrations 001–010 applied. Most recent ones:
    "you've used this before."
 5. **Recipe scaling on add-to-meal-plan** (e.g., "use 2x the recipe
    for this slot"). Service exists; UI doesn't.
-6. **Onboarding banner** for the first user, pointing at Add a recipe.
-7. **Forgot-password / account deletion.** Out of MVP scope; needed
+6. **Per-household configurable staples list.** V2 hard-codes
+   salt/oil/pepper; V3 should let each household tune it.
+7. **Pantry expiration tracking.** The domain model has
+   `expiration_date`; the schema doesn't store it. Useful for
+   "use this up before it goes bad" recipe nudges.
+8. **Onboarding banner** for the first user, pointing at Add a recipe
+   and Pantry check-in.
+9. **Forgot-password / account deletion.** Out of MVP scope; needed
    before public launch.
-8. **Native or React Native mobile app.** Streamlit is fine for the
-   self-host MVP but not a competitive paid product.
+10. **Native or React Native mobile app.** Streamlit is fine for the
+    self-host MVP but not a competitive paid product.
 
 ---
 
