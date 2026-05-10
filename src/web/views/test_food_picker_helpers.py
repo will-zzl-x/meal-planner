@@ -14,6 +14,7 @@ from web.views.food_picker import _parse_servings
 from web.views.recipes import (
     _DraftIngredient,
     _drafts_to_ingredients,
+    _fmt_decimal,
     _per_serving_total,
 )
 
@@ -86,3 +87,19 @@ def test_per_serving_total_divides_correctly():
 def test_per_serving_total_zero_servings_returns_zero():
     drafts = [_draft(servings="2")]
     assert _per_serving_total(drafts, 0) == 0
+
+
+# ------------------------------------------------- _fmt_decimal
+
+def test_fmt_decimal_strips_trailing_zeros():
+    assert _fmt_decimal(Decimal("1.0")) == "1"
+    assert _fmt_decimal(Decimal("2.50")) == "2.5"
+
+
+def test_fmt_decimal_preserves_meaningful_decimals():
+    assert _fmt_decimal(Decimal("1.5")) == "1.5"
+    assert _fmt_decimal(Decimal("0.25")) == "0.25"
+
+
+def test_fmt_decimal_integer_shows_no_dot():
+    assert _fmt_decimal(Decimal("3")) == "3"
