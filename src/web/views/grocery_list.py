@@ -26,6 +26,8 @@ def render(user: UserProfile,
         st.warning("You're not in a household yet. Ask the planner for an invite code.")
         return
 
+    _render_pantry_freshness_banner(user, inventory_repo)
+
     monday = _current_week_monday()
     st.caption(f"For week of {monday.strftime('%b %d, %Y')} (use the Weekly Plan page to switch weeks)")
 
@@ -57,3 +59,32 @@ def _current_week_monday() -> date:
     monday_of_today = today - timedelta(days=today.weekday())
     offset = st.session_state.get("week_offset", 0)
     return monday_of_today + timedelta(weeks=offset)
+
+
+def _render_pantry_freshness_banner(user: UserProfile,
+                                    inventory_repo: SQLiteInventoryRepository) -> None:
+    """If the pantry hasn't been reviewed in >3 days, surface a warning.
+    The grocery list subtracts pantry inventory, so a stale pantry
+    silently makes the list wrong (showing items you actually have)."""
+    last = inventory_repo.last_reviewed_at(user.household_id)
+    if last is None:
+        st.warning(
+            "Pantry has never been reviewed. The grocery list will show "
+            "everything as 'needed' — head to the Pantry page first to "
+            "log what you already have."
+        )
+        return
+    days = _days_since(last)
+    if days > 3:
+        st.warning(
+            f"Last pantry check-in was {days} days ago. The grocery list "
+            "may be off. Head to the Pantry page → tap **Quick check-in** "
+            "to bring it current."
+        )
+    else:
+        st.caption(f"_Pantry checked {days} day(s) ago._")
+
+
+def _days_since(ts) -> int:
+    from datetime import datetime
+    return max(0, (datetime.now() - ts).days)
