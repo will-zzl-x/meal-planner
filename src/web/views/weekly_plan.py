@@ -87,10 +87,13 @@ def _render_day(user: UserProfile,
         st.write(f"**{meal.capitalize()}**")
         for e in meal_entries:
             cal = e.planned_servings * (e.calories_per_serving or 0)
-            cols = st.columns([5, 1])
+            # Wider Remove column ([4,2]) and use_container_width so the
+            # button is reliably tappable on a 375 px iPhone screen.
+            cols = st.columns([4, 2])
             cols[0].write(f"• {e.recipe_name} × {e.planned_servings}  ·  {cal} cal")
             if user.is_planner:
-                if cols[1].button("Remove", key=f"rm-{e.id}", type="secondary"):
+                if cols[1].button("Remove", key=f"rm-{e.id}", type="secondary",
+                                  use_container_width=True):
                     plan_repo.delete_entry(e.id, user.household_id)
                     st.rerun()
 

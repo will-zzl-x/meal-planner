@@ -125,9 +125,12 @@ def _render_off_plan_section(user: UserProfile,
     st.subheader("Off-plan eating")
     if off_plan_entries:
         for entry in off_plan_entries:
-            cols = st.columns([5, 1])
+            # Wider Remove column ([4,2]) + use_container_width so the
+            # button is comfortably tappable on a small phone screen.
+            cols = st.columns([4, 2])
             cols[0].write(f"• {entry.description} — **{entry.calories} cal**")
-            if cols[1].button("Remove", key=f"off-rm-{entry.id}", type="secondary"):
+            if cols[1].button("Remove", key=f"off-rm-{entry.id}", type="secondary",
+                              use_container_width=True):
                 food_log_repo.delete(entry.id, user.user_id)
                 st.rerun()
     else:

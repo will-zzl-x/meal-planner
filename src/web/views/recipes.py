@@ -322,12 +322,15 @@ def _render_draft_list(draft_key: str, drafts: List[_DraftIngredient]) -> None:
     """Render each draft ingredient with a remove button."""
     for idx, draft in enumerate(drafts):
         line_cal = int(round(float(draft.servings) * draft.calories_per_serving))
-        cols = st.columns([6, 1])
+        # Wider Remove column + use_container_width so the button has
+        # a reasonable tap target on a phone.
+        cols = st.columns([5, 2])
         cols[0].write(
             f"- {_fmt_decimal(draft.servings)} × {draft.display_name} "
             f"({draft.serving_label}) — {line_cal} cal"
         )
-        if cols[1].button("Remove", key=f"{draft_key}_rm_{idx}"):
+        if cols[1].button("Remove", key=f"{draft_key}_rm_{idx}",
+                          use_container_width=True):
             drafts.pop(idx)
             st.rerun()
 
