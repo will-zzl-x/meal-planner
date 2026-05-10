@@ -68,11 +68,12 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 cursor.execute(
                     """
                     INSERT INTO recipe_ingredients
-                        (id, recipe_id, ingredient_id, quantity, unit, store)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (id, recipe_id, ingredient_id, quantity, unit, store, display_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (str(uuid.uuid4()), recipe_id, ingredient_id,
-                     float(ingredient.quantity), ingredient.unit, ingredient.store),
+                     float(ingredient.quantity), ingredient.unit, ingredient.store,
+                     ingredient.name),
                 )
 
             conn.commit()
@@ -167,11 +168,12 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 cursor.execute(
                     """
                     INSERT INTO recipe_ingredients
-                        (id, recipe_id, ingredient_id, quantity, unit, store)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (id, recipe_id, ingredient_id, quantity, unit, store, display_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (str(uuid.uuid4()), recipe.id, ingredient_id,
-                     float(ingredient.quantity), ingredient.unit, ingredient.store),
+                     float(ingredient.quantity), ingredient.unit, ingredient.store,
+                     ingredient.name),
                 )
 
             conn.commit()
@@ -264,10 +266,14 @@ class SQLiteRecipeRepository(IRecipeRepository):
         # Pulling catalog source/serving info alongside the join row lets the
         # calorie calculator distinguish picker-backed ingredients (real
         # nutrition) from legacy free-text ones (zero nutrition stubs).
+        # `display_name` (migration 010) preserves the user-typed name on
+        # the join row so backfilled recipes don't visibly morph into
+        # catalog canonical names ("Skinless chicken thighs (~4)" should
+        # not become just "Chicken Breast" after a backfill).
         cursor.execute(
             """
-            SELECT i.id AS ingredient_id, i.name, i.source,
-                   ri.quantity, ri.unit, ri.store
+            SELECT i.id AS ingredient_id, i.name AS catalog_name, i.source,
+                   ri.quantity, ri.unit, ri.store, ri.display_name
             FROM recipe_ingredients ri
             JOIN ingredients i ON ri.ingredient_id = i.id
             WHERE ri.recipe_id = ?
@@ -281,8 +287,9 @@ class SQLiteRecipeRepository(IRecipeRepository):
             # per-serving nutrition (USDA / Open Food Facts / sample / manual).
             # Legacy zero-nutrition stubs created before 8a have source = NULL.
             picker_backed = ing['source'] is not None
+            display_name = ing['display_name'] or ing['catalog_name']
             ingredients.append(Ingredient(
-                name=ing['name'],
+                name=display_name,
                 quantity=qty,
                 unit=ing['unit'],
                 store=ing['store'],

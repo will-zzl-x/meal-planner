@@ -141,6 +141,34 @@ def test_backfill_is_idempotent(tmp_path):
     assert second.total_ingredients_skipped == 0
 
 
+def test_backfill_preserves_original_ingredient_name(tmp_path):
+    """The user-typed ingredient name is kept after backfill — only the
+    catalog reference and servings count are added. Catalog `display_name`
+    must NOT overwrite the original (the user wrote 'Skinless chicken
+    thighs (~4 thighs)' and shouldn't see it morph into 'Chicken Breast'
+    after a backfill)."""
+    households, users, catalog, recipes, backfiller = _setup(tmp_path)
+    h = households.create("Smiths")
+    alice = users.create_user("Alice", "a@example.com", household_id=h.id, is_planner=True)
+
+    # Phrasing matters: the sample DB has "Chicken Breast" (singular)
+    # so we use a query that the matcher will resolve, while keeping the
+    # original phrasing distinct from the catalog display name.
+    original_name = "Skinless chicken breast (cubed)"
+    recipes.save(Recipe(
+        name="Test bowl",
+        ingredients=[Ingredient(name=original_name, quantity=Decimal("6"), unit="oz")],
+        base_servings=1,
+        calories_per_serving=0,
+    ), household_id=h.id, created_by_user_id=alice.user_id)
+
+    backfiller.backfill_household(h.id)
+    reloaded = recipes.find_all_by_household(h.id)[0]
+    assert reloaded.ingredients[0].name == original_name
+    # And the catalog link should still be made.
+    assert reloaded.ingredients[0].catalog_ingredient_id is not None
+
+
 def test_unmatched_ingredient_left_as_legacy(tmp_path):
     households, users, catalog, recipes, backfiller = _setup(tmp_path)
     h = households.create("Smiths")

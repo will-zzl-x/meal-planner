@@ -239,8 +239,13 @@ class SeedRecipeBackfiller:
         # Persist the catalog row (idempotent on source+external_id).
         catalog = self.catalog_repo.save(CatalogIngredient.from_food_item(food_match))
 
+        # Preserve the *original* ingredient name (e.g. the seed text
+        # "Skinless chicken thighs (~4 thighs)") rather than overwriting
+        # with the catalog's display name. The user wrote that name and
+        # may not recognize "Chicken Breast" as the same thing on the
+        # recipe card. The link is still made via catalog_ingredient_id.
         resolved = Ingredient(
-            name=catalog.display_name,
+            name=ingredient.name,
             quantity=servings,                # legacy field — store servings count here
             unit=catalog.serving_label,       # legacy field — store catalog serving label
             store=ingredient.store,           # preserve store routing
