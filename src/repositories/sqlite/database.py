@@ -17,12 +17,36 @@ import os
 import re
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, List, Optional, Sequence
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection as SAConnection, Engine
+
+
+def to_date(value):
+    """Normalize a SQL date column into a Python `date`.
+    SQLite returns these as ISO strings; Postgres returns `date` objects."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return datetime.fromisoformat(value).date()
+
+
+def to_datetime(value):
+    """Normalize a SQL timestamp column into a Python `datetime`.
+    SQLite returns these as ISO strings; Postgres returns `datetime` objects."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day)
+    return datetime.fromisoformat(value)
 
 
 def _normalize_url(raw: str) -> str:

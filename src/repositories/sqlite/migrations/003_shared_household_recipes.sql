@@ -25,7 +25,12 @@ FROM recipes r
 JOIN users u ON r.user_id = u.id
 WHERE u.household_id IS NOT NULL;
 
--- Drop old table and rename new one
+-- Drop old table and rename new one. We have to drop `ingredients` first
+-- because in migration 001 it has a FK pointing at recipes — Postgres
+-- refuses to drop recipes while a dependent FK exists. Migration 005
+-- recreates `ingredients` from scratch (different shape, as a nutrition
+-- catalog), so dropping it here is safe.
+DROP TABLE IF EXISTS ingredients;
 DROP TABLE IF EXISTS recipes;
 ALTER TABLE recipes_new RENAME TO recipes;
 
@@ -36,10 +41,5 @@ DROP INDEX IF EXISTS idx_recipes_user_id;
 CREATE INDEX IF NOT EXISTS idx_recipes_household_id ON recipes(household_id);
 CREATE INDEX IF NOT EXISTS idx_recipes_created_by ON recipes(created_by_user_id);
 
--- Update trigger
-DROP TRIGGER IF EXISTS update_recipes_timestamp;
-CREATE TRIGGER IF NOT EXISTS update_recipes_timestamp 
-    AFTER UPDATE ON recipes
-    BEGIN
-        UPDATE recipes SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
+-- (Previous recipes-table trigger drop+recreate removed for Postgres
+-- compatibility — updated_at is set explicitly by repository UPDATEs.)

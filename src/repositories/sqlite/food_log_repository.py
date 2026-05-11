@@ -4,14 +4,14 @@ from datetime import date, datetime
 from typing import List
 
 from core.interfaces.food_log_repository import FoodLogEntry, IFoodLogRepository
-from repositories.sqlite.database import DatabaseManager
+from repositories.sqlite.database import DatabaseManager, to_date
 
 
 def _row_to_entry(row) -> FoodLogEntry:
     return FoodLogEntry(
         id=row['id'],
         user_id=row['user_id'],
-        log_date=datetime.fromisoformat(row['log_date']).date(),
+        log_date=to_date(row["log_date"]),
         calories=row['calories'],
         meal_plan_entry_id=row['meal_plan_entry_id'],
         description=row['description'],

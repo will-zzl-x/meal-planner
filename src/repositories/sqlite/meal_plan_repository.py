@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from typing import List
 
 from core.interfaces.meal_plan_repository import IMealPlanRepository, MealPlanEntry
-from repositories.sqlite.database import DatabaseManager
+from repositories.sqlite.database import DatabaseManager, to_date
 
 
 # Sort meals in this canonical day order in returned lists.
@@ -15,7 +15,7 @@ def _row_to_entry(row) -> MealPlanEntry:
     return MealPlanEntry(
         id=row['id'],
         recipe_id=row['recipe_id'],
-        planned_date=datetime.fromisoformat(row['planned_date']).date(),
+        planned_date=to_date(row["planned_date"]),
         planned_servings=row['planned_servings'],
         meal_type=row['meal_type'],
         recipe_name=row['recipe_name'],

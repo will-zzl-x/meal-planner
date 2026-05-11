@@ -31,9 +31,5 @@ CREATE TABLE IF NOT EXISTS inventory (
 CREATE INDEX IF NOT EXISTS idx_inventory_household_id ON inventory(household_id);
 CREATE INDEX IF NOT EXISTS idx_users_household_id ON users(household_id);
 
--- Add trigger for households timestamp
-CREATE TRIGGER IF NOT EXISTS update_households_timestamp 
-    AFTER UPDATE ON households
-    BEGIN
-        UPDATE households SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
+-- (Trigger removed for Postgres compatibility — updated_at is set
+-- explicitly by repository code where needed.)

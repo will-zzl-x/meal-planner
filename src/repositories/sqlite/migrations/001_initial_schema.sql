@@ -86,33 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_inventory_user_id ON inventory(user_id);
 CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_calorie_logs(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_weekly_plans_user_date ON weekly_calorie_plans(user_id, week_start_date);
 
--- Triggers for updated_at timestamps
-CREATE TRIGGER IF NOT EXISTS update_users_timestamp 
-    AFTER UPDATE ON users
-    BEGIN
-        UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
-
-CREATE TRIGGER IF NOT EXISTS update_recipes_timestamp 
-    AFTER UPDATE ON recipes
-    BEGIN
-        UPDATE recipes SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
-
-CREATE TRIGGER IF NOT EXISTS update_inventory_timestamp 
-    AFTER UPDATE ON inventory
-    BEGIN
-        UPDATE inventory SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
-
-CREATE TRIGGER IF NOT EXISTS update_daily_logs_timestamp 
-    AFTER UPDATE ON daily_calorie_logs
-    BEGIN
-        UPDATE daily_calorie_logs SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
-
-CREATE TRIGGER IF NOT EXISTS update_weekly_plans_timestamp 
-    AFTER UPDATE ON weekly_calorie_plans
-    BEGIN
-        UPDATE weekly_calorie_plans SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
+-- (Previously: BEFORE-UPDATE triggers to bump updated_at. Removed for
+-- Postgres compatibility — every UPDATE in the repository code already
+-- writes updated_at = CURRENT_TIMESTAMP explicitly, so the triggers are
+-- redundant.)

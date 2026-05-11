@@ -16,7 +16,7 @@ from typing import List, Optional
 
 from core.domain.models import InventoryItem
 from core.interfaces.inventory_repository import IInventoryRepository
-from repositories.sqlite.database import DatabaseManager
+from repositories.sqlite.database import DatabaseManager, to_datetime
 
 
 class SQLiteInventoryRepository(IInventoryRepository):
@@ -138,6 +138,6 @@ class SQLiteInventoryRepository(IInventoryRepository):
         if not row or not row['last']:
             return None
         try:
-            return datetime.fromisoformat(row['last'])
+            return to_datetime(row['last'])
         except (ValueError, TypeError):
             return None
