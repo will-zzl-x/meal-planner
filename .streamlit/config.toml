@@ -1,0 +1,13 @@
+# Streamlit configuration. These are sensible production defaults; locally
+# they take effect too but aren't harmful.
+
+[server]
+# Don't try to open a browser tab on the server.
+headless = true
+
+[browser]
+# Don't ping Streamlit's stats endpoint.
+gatherUsageStats = false
+
+[theme]
+base = "light"

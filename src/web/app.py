@@ -25,6 +25,16 @@ import streamlit as st
 # Make sibling packages importable when running via `streamlit run src/web/app.py`.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Streamlit Cloud delivers secrets via st.secrets, not env vars. Copy any
+# DATABASE_URL secret into the environment so the existing env-based fallback
+# chain (DATABASE_URL > MEAL_PLANNER_DB > default file) keeps working both
+# on Streamlit Cloud and on a plain local run.
+try:
+    if "DATABASE_URL" in st.secrets:
+        os.environ["DATABASE_URL"] = st.secrets["DATABASE_URL"]
+except Exception:
+    pass  # local dev without a secrets.toml — env vars / default file are fine
+
 from core.services.auth_service import (  # noqa: E402
     AuthService,
     EmailAlreadyRegisteredError,

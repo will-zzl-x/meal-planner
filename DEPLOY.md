@@ -1,98 +1,135 @@
-# Deploying the meal planner — phone-only walkthrough
+# Deploying the meal planner — phone-only, free forever
 
-This deploys the app to **Fly.io's free tier** without ever opening a
-terminal. You'll do everything from your phone in Safari/Chrome.
+This guide gets the app live on **Streamlit Community Cloud** (hosts
+the app) backed by a **Neon** database (holds the data). Both have
+generous free-forever tiers — no credit card on file anywhere, no
+"trial that ends in N days" gotcha.
 
-You'll do it once. After that, every time changes land in the repo,
-GitHub redeploys the app automatically.
+You'll do it once. After that, every push to `main` (or to whichever
+branch you tell Streamlit Cloud to track) redeploys the app
+automatically — no clicks needed.
 
 ## What you'll get
 
-- A URL like `https://meal-planner-zzlx.fly.dev` you can text to friends.
-- The database lives on a 1 GB persistent disk that survives restarts
-  and redeploys.
-- Free tier: the app sleeps after ~15 min of no traffic; the next
-  visitor waits 20–30 sec for it to wake up. Then it stays warm.
-- 2–10 households fits comfortably inside the free allowance.
+- A URL like `https://meal-planner-yourname.streamlit.app` you can
+  text to friends.
+- The database is a separate Postgres instance on Neon; it survives
+  every restart and redeploy.
+- Free tier: app sleeps after about a week of total inactivity (rare
+  for a friends-and-family meal planner). Neon's free DB pauses after
+  5 min idle but wakes in ~1 second on the first query.
 
-## Step 1 — Sign up at Fly.io (5 min)
+## Step 1 — Sign up at Neon (3 min)
 
-1. Open **https://fly.io** in Safari and tap **Get Started**.
-2. Sign up (email + password, or use GitHub login).
-3. Fly asks for a credit card. **They don't charge you unless you
-   exceed the free tier** — the card is just to prevent abuse. The app
-   at our scale stays well inside free.
+Neon is a hosted Postgres service. We just need the *connection
+string* — a single URL the app uses to talk to the database.
 
-## Step 2 — Generate a deploy token (2 min)
+1. Open **https://neon.tech** in Safari and tap **Sign up**. Use
+   GitHub login for the fastest path.
+2. After signup, Neon creates a default project. If it asks you to
+   name it, use whatever you like (e.g. "meal-planner").
+3. From the project page, find **Connection Details** (usually a
+   box on the dashboard, or under **Settings → Connection Details**).
+4. Make sure the dropdown shows the **psql** or **Connection String**
+   view, not just host/user separately.
+5. Copy the full string. It looks like:
+   ```
+   postgresql://alex:abc123XYZ@ep-cool-name-1234.us-east-2.aws.neon.tech/neondb?sslmode=require
+   ```
+   Save it in your Notes app for the next step.
 
-A *deploy token* is a long secret string that lets GitHub deploy on
-your behalf. Think of it as a password just for deployments.
+That's it for Neon. The database is already running.
 
-1. In the Fly dashboard, tap your **avatar (top right) → Account
-   Settings → Access Tokens**.
-2. Tap **Create access token**. Name it anything (e.g. "github
-   deploy").
-3. Copy the token that appears — it starts with `FlyV1`. **It's only
-   shown once**, so copy it somewhere safe (your Notes app is fine,
-   delete it after step 3).
+## Step 2 — Sign up at Streamlit Cloud (3 min)
 
-## Step 3 — Add the token to GitHub (2 min)
+Streamlit Cloud is a free service for hosting Streamlit apps directly
+from GitHub.
 
-1. In Safari, open `https://github.com/will-zzl-x/meal-planner`.
-2. Tap **Settings** → in the left sidebar, **Secrets and variables →
-   Actions**.
-3. Tap **New repository secret**.
-4. Name: `FLY_API_TOKEN` (exactly that, all caps).
-5. Secret: paste the token from Step 2.
-6. Tap **Add secret**.
+1. Open **https://streamlit.io/cloud** in Safari and tap **Sign up**.
+2. Sign in with GitHub. Grant access to the repos Streamlit can
+   read — at minimum, your **meal-planner** repo.
 
-You can now delete the token from your Notes app — GitHub has it.
+## Step 3 — Create the app on Streamlit Cloud (2 min)
 
-## Step 4 — Run the deploy (3 min, then ~5 min waiting)
+1. From Streamlit Cloud's main screen, tap **Create app** (or **New
+   app**).
+2. Fill in:
+   - **Repository**: `will-zzl-x/meal-planner`
+   - **Branch**: `main` (or whichever branch you want live).
+   - **Main file path**: `src/web/app.py`
+   - **App URL** (subdomain): pick something memorable — this becomes
+     `https://<that>.streamlit.app`.
+3. **Don't tap Deploy yet** — first add the database secret in the
+   next step.
 
-1. Still on GitHub, tap the **Actions** tab at the top of the repo.
-2. In the left sidebar, tap **Deploy to Fly.io**.
-3. Tap the **Run workflow** dropdown on the right. Pick the branch you
-   want to deploy (probably `claude/review-recent-changes-...` for the
-   first time, or `main` later). Tap **Run workflow**.
-4. Refresh the page after a few seconds. A new run appears at the top
-   — tap into it to watch progress. The "Deploy app" job has steps
-   like *Create Fly app*, *Create volume*, *Deploy*. They run top to
-   bottom.
-5. When all steps go green (~5 min total), the last step prints the
-   URL. Open it in Safari — that's your live app.
+## Step 4 — Add the database secret (1 min)
+
+1. On the create-app screen, expand **Advanced settings** (or
+   **Secrets**, depending on UI version).
+2. In the secrets box, paste exactly this (substituting your Neon
+   string from Step 1):
+   ```toml
+   DATABASE_URL = "postgresql://alex:abc123XYZ@ep-cool-name-1234.us-east-2.aws.neon.tech/neondb?sslmode=require"
+   ```
+   Note the quotes around the URL. The format is TOML.
+3. Save the secret.
+
+## Step 5 — Deploy (~5 min, then you're done)
+
+1. Tap **Deploy**.
+2. Streamlit Cloud now: clones the repo, installs dependencies, runs
+   `streamlit run src/web/app.py`. You'll see a build log scroll by.
+3. The first deploy takes ~3-5 min. When it's done, you'll land on
+   the live app. The very first request runs the database migrations
+   (creating your tables on Neon) — give it 5-10 seconds extra on
+   first load.
+4. Copy the URL — that's what you share with friends.
 
 ## After the first deploy
 
-Every push to `main` (or to any working branch starting with
-`claude/`) automatically redeploys. You can also re-trigger manually
-from the Actions tab any time.
+Every git push to your tracked branch (default: `main`) automatically
+redeploys. To make a change:
 
-## If a step fails
+- Edit the code locally, commit, push to `main`.
+- Streamlit Cloud picks it up within ~30 seconds and rebuilds.
+- ~1 minute later your friends see the new version.
 
-The Actions UI will show a red X on whichever step broke. Tap it to
-see the error message. Most common ones:
+You can also force a redeploy from the Streamlit Cloud dashboard:
+your app → **Manage app** → **Reboot**.
 
-- **"Name has already been taken"** in *Create Fly app*: the app name
-  `meal-planner-zzlx` is in use by someone else on Fly. Tell me and
-  I'll change it to something unique.
-- **"FLY_API_TOKEN was empty"**: the secret wasn't set in Step 3.
-  Re-do that step, then re-run the workflow from the Actions tab.
-- **Build error in *Deploy* step**: a Python dependency issue. Copy
-  the error and tell me — I'll fix the Dockerfile or requirements.
+## If something breaks
 
-## Backing up the database (optional, do this every few weeks)
+The Streamlit Cloud dashboard shows logs for every deploy and at
+runtime. The most common issues:
 
-This needs a brief terminal session (a friend's laptop or a one-time
-Codespace). One command downloads a snapshot of the live DB:
+- **"could not connect to server" / "FATAL: password authentication
+  failed"**: the `DATABASE_URL` secret has a typo. Re-copy from Neon
+  and re-paste in Settings → Secrets.
+- **"relation does not exist"**: migrations didn't run. Restart the
+  app (Manage app → Reboot). The repo constructors auto-run
+  migrations on first connection.
+- **"module not found"**: a Python dependency missing from
+  `requirements.txt`. Send me the error and I'll add it.
+
+## Backing up the database (optional)
+
+Neon's free tier includes point-in-time recovery for the last 24
+hours by default. For longer-term snapshots, install `pg_dump` on any
+laptop and run:
 
 ```bash
-fly ssh sftp get /data/meal_planner.db ./backup-$(date +%Y%m%d).db -a meal-planner-zzlx
+pg_dump "<your DATABASE_URL>" > backup-$(date +%Y%m%d).sql
 ```
 
-Email yourself the file. Done.
+Worth doing every few weeks. The file is plain text SQL — keep it
+somewhere safe (cloud drive, email to yourself, etc).
 
-## Upgrading off the free tier (only if cold starts get annoying)
+## Costs
 
-If you outgrow free, change the `min_machines_running` line in
-`fly.toml` from `0` to `1`. That keeps the app always-on (~$5/month).
+- **Neon free tier**: 0.5 GB storage, 1 project. Fits 2–10
+  households for years.
+- **Streamlit Cloud free**: 1 GB RAM per app, unlimited public apps.
+  Plenty for this size.
+
+Neither service charges anything unless you actively upgrade. There's
+no card on file by default for either.
