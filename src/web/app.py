@@ -47,7 +47,9 @@ from repositories.sqlite.recipe_repository import SQLiteRecipeRepository  # noqa
 from repositories.sqlite.user_repository import SQLiteUserRepository  # noqa: E402
 
 
-DB_PATH = os.environ.get("MEAL_PLANNER_DB", "meal_planner.db")
+# DATABASE_URL wins (production: Neon Postgres URL). Otherwise fall back to
+# MEAL_PLANNER_DB (a SQLite file path) or the default local file.
+DB_PATH = os.environ.get("DATABASE_URL") or os.environ.get("MEAL_PLANNER_DB", "meal_planner.db")
 
 
 # --- Cached singletons ----------------------------------------------------
