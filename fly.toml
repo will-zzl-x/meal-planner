@@ -1,35 +1,27 @@
-# Fly.io configuration for the meal-planner app.
-# `fly launch` will prompt for an app name and region; it then writes
-# those into this file. The volume mount and service config below stay
-# as-is.
+# fly.toml app configuration file generated for meal-planner-zzlx on 2026-05-11T02:06:40Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "meal-planner-zzlx"  # must match FLY_APP in .github/workflows/fly-deploy.yml
-primary_region = "iad"  # change via `fly launch` prompt if you prefer another
+app = 'meal-planner-zzlx'
+primary_region = 'iad'
 
 [build]
-  # Uses the Dockerfile in the repo root.
 
 [env]
-  MEAL_PLANNER_DB = "/data/meal_planner.db"
+  MEAL_PLANNER_DB = '/data/meal_planner.db'
 
-# The persistent volume that keeps the SQLite DB alive across restarts
-# and deploys. `fly volumes create meal_planner_data --size 1 --region iad`
-# (size in GB; 1 GB is plenty for friends-and-family scale and stays in
-# the free allowance).
-[mounts]
-  source = "meal_planner_data"
-  destination = "/data"
+[[mounts]]
+  source = 'meal_planner_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  # Auto-stop after idle saves free-tier hours; first visitor after
-  # idle waits ~20-30 sec for a cold start. Then it stays warm.
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  # Smallest free-tier machine. Plenty for a Streamlit app at this scale.
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
