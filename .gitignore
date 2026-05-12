@@ -58,3 +58,6 @@ temp/
 # Kiro CLI (keep steering docs but ignore temp files)
 .kiro/temp/
 .kiro/cache/
+
+# Streamlit local secrets (the .example file is committed; the real one isn't)
+.streamlit/secrets.toml

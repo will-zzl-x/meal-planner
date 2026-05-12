@@ -1,241 +1,196 @@
-#!/usr/bin/env python3
 """
-Test Enhanced Meal Planning Service - Phase 4 Integration
+Tests for MealPlanningService — the actual public API.
+
+This file replaces an earlier version that called several methods
+(`create_daily_meal_plan`, `create_weekly_meal_plan`, `adjust_meal_plan_for_calorie_banking`,
+`get_meal_plan_summary`) that were never implemented on the service. The tests here
+exercise what's really there.
 """
 import sys
-import os
 from pathlib import Path
 from decimal import Decimal
-from datetime import date, timedelta
+from datetime import date
 
-# Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
 from core.services.meal_planning_service import MealPlanningService
-from core.domain.models import Recipe, Ingredient, InventoryItem
+from core.domain.models import Recipe, Ingredient, InventoryItem, FoodItem
 
-def create_sample_recipes():
-    """Create sample recipes for testing."""
-    return [
-        Recipe(
-            name="Protein Pancakes",
-            ingredients=[
-                Ingredient("oats", Decimal('0.5'), "cup"),
-                Ingredient("protein_powder", Decimal('1'), "scoop"),
-                Ingredient("eggs", Decimal('2'), "whole"),
-            ],
-            base_servings=1,
-            calories_per_serving=320
-        ),
-        Recipe(
-            name="Chicken Salad",
-            ingredients=[
-                Ingredient("chicken_breast", Decimal('6'), "oz"),
-                Ingredient("mixed_greens", Decimal('2'), "cup"),
-                Ingredient("olive_oil", Decimal('1'), "tbsp"),
-            ],
-            base_servings=1,
-            calories_per_serving=450
-        ),
-        Recipe(
-            name="Salmon Dinner",
-            ingredients=[
-                Ingredient("salmon_fillet", Decimal('6'), "oz"),
-                Ingredient("sweet_potato", Decimal('1'), "medium"),
-                Ingredient("broccoli", Decimal('1'), "cup"),
-            ],
-            base_servings=1,
-            calories_per_serving=520
-        ),
-        Recipe(
-            name="Greek Yogurt Snack",
-            ingredients=[
-                Ingredient("greek_yogurt", Decimal('1'), "cup"),
-                Ingredient("berries", Decimal('0.5'), "cup"),
-                Ingredient("almonds", Decimal('0.25'), "cup"),
-            ],
-            base_servings=1,
-            calories_per_serving=280
-        )
+
+def _recipe(name: str, calories: int, ingredients=None) -> Recipe:
+    return Recipe(
+        name=name,
+        ingredients=ingredients or [Ingredient("chicken_breast", Decimal('6'), "oz")],
+        base_servings=1,
+        calories_per_serving=calories,
+    )
+
+
+def test_search_food_database_by_query_substring_match():
+    service = MealPlanningService()
+    results = service.search_food_database("almond")
+    assert len(results) == 1
+    assert results[0].name == "Almonds"
+    assert results[0].calories_per_unit == 160
+    assert results[0].unit == "oz"
+
+
+def test_search_food_database_filters_by_category():
+    service = MealPlanningService()
+    fruits = service.search_food_database("", category="fruit")
+    assert len(fruits) >= 2
+    assert all(food.category == "fruit" for food in fruits)
+
+
+def test_search_food_database_no_match_returns_empty():
+    service = MealPlanningService()
+    assert service.search_food_database("nonexistent_food_xyz") == []
+
+
+def test_add_recipe_to_meal_plan_computes_calories_from_servings():
+    service = MealPlanningService()
+    recipe = _recipe("Chicken Bowl", calories=400)
+
+    entry = service.add_recipe_to_meal_plan(
+        "user1", date.today(), "lunch", recipe, Decimal('2'),
+    )
+
+    assert entry.item_type == "recipe"
+    assert entry.recipe is recipe
+    assert entry.servings == Decimal('2')
+    assert entry.calories == 800  # 400 * 2
+    # _estimate_recipe_macros uses 30/40/30 split → 4/4/9 cal/g
+    assert entry.protein_grams == Decimal('800') * Decimal('0.30') / 4
+    assert entry.carb_grams == Decimal('800') * Decimal('0.40') / 4
+    assert entry.fat_grams == Decimal('800') * Decimal('0.30') / 9
+
+
+def test_add_food_item_to_meal_plan_scales_macros_by_quantity():
+    service = MealPlanningService()
+    almonds = service.search_food_database("almond")[0]
+
+    entry = service.add_food_item_to_meal_plan(
+        "user1", date.today(), "snack", almonds, Decimal('2'),
+    )
+
+    assert entry.item_type == "food_item"
+    assert entry.food_item is almonds
+    assert entry.quantity == Decimal('2')
+    # Almonds: 160 cal, 6/6/14 protein/carbs/fats per oz
+    assert entry.calories == 320
+    assert entry.protein_grams == Decimal('12')
+    assert entry.carb_grams == Decimal('12')
+    assert entry.fat_grams == Decimal('28')
+
+
+def test_calculate_recipe_meal_coverage_whole_meals_and_leftovers():
+    service = MealPlanningService()
+    recipe = _recipe("Stir Fry", calories=400)
+
+    # 6 servings made, 600 cal target per meal → 1.5 servings per meal → 4 whole meals
+    coverage = service.calculate_recipe_meal_coverage(
+        recipe, servings_made=Decimal('6'), target_calories_per_meal=600,
+    )
+
+    assert coverage["whole_meals_covered"] == 4
+    assert coverage["days_covered"] == 4
+    assert coverage["servings_per_meal"] == 1.5
+    assert coverage["calories_per_serving"] == 400
+    # 6 - (4 * 1.5) = 0 leftover servings
+    assert coverage["leftover_servings"] == 0.0
+    assert coverage["leftover_calories"] == 0
+    assert coverage["total_calories"] == 2400
+
+
+def test_calculate_recipe_meal_coverage_with_partial_leftovers():
+    service = MealPlanningService()
+    recipe = _recipe("Stir Fry", calories=500)
+
+    # 5 servings made, 500 cal target per meal → 1 serving per meal → 5 whole meals, no leftovers
+    coverage = service.calculate_recipe_meal_coverage(
+        recipe, servings_made=Decimal('5'), target_calories_per_meal=500,
+    )
+    assert coverage["whole_meals_covered"] == 5
+    assert coverage["leftover_servings"] == 0.0
+
+
+def test_create_daily_meal_plan_aggregates_calories_and_macros():
+    service = MealPlanningService()
+    recipe = _recipe("Bowl", calories=500)
+    almonds = service.search_food_database("almond")[0]
+
+    entries = [
+        service.add_recipe_to_meal_plan("u", date.today(), "lunch", recipe, Decimal('1')),
+        service.add_food_item_to_meal_plan("u", date.today(), "snack", almonds, Decimal('1')),
     ]
 
-def create_sample_inventory():
-    """Create sample household inventory."""
-    return [
-        InventoryItem("chicken_breast", Decimal('2'), "lb"),
-        InventoryItem("eggs", Decimal('6'), "whole"),
-        InventoryItem("oats", Decimal('2'), "cup"),
-    ]
+    plan = service.create_daily_meal_plan_from_entries(
+        "u", date.today(), target_calories=2000, meal_entries=entries,
+    )
 
-def test_daily_meal_planning():
-    """Test daily meal plan creation with calorie targeting."""
-    print("📅 Testing Daily Meal Planning")
-    print("=" * 35)
-    
+    assert plan.user_id == "u"
+    assert plan.target_calories == 2000
+    assert plan.total_calories == 660  # 500 + 160
+    assert plan.calories_remaining == 1340
+    assert len(plan.meals) == 2
+
+
+def test_create_daily_meal_plan_with_no_entries():
     service = MealPlanningService()
-    recipes = create_sample_recipes()
-    
-    # Test daily meal plan creation
-    target_calories = 2000
-    daily_plan = service.create_daily_meal_plan(
-        user_id="alice",
-        target_date=date.today(),
-        target_calories=target_calories,
-        available_recipes=recipes
+    plan = service.create_daily_meal_plan_from_entries(
+        "u", date.today(), target_calories=2000, meal_entries=[],
     )
-    
-    print(f"✅ Daily meal plan created:")
-    print(f"   Target calories: {daily_plan.target_calories}")
-    print(f"   Actual calories: {daily_plan.total_calories}")
-    print(f"   Calories remaining: {daily_plan.calories_remaining}")
-    print(f"   Total protein: {daily_plan.total_protein:.1f}g")
-    print(f"   Total carbs: {daily_plan.total_carbs:.1f}g")
-    print(f"   Total fats: {daily_plan.total_fats:.1f}g")
-    
-    print(f"\n   Meals planned:")
-    for meal in daily_plan.meals:
-        print(f"   • {meal.meal_type}: {meal.recipe.name} ({meal.servings} servings, {meal.calories} cal)")
-    
-    return len(daily_plan.meals) > 0
+    assert plan.total_calories == 0
+    assert plan.calories_remaining == 2000
+    assert plan.meals == []
 
-def test_weekly_meal_planning():
-    """Test weekly meal planning for household."""
-    print("\n📊 Testing Weekly Meal Planning")
-    print("=" * 35)
-    
+
+def test_generate_comprehensive_grocery_list_combines_recipes_and_foods():
     service = MealPlanningService()
-    recipes = create_sample_recipes()
-    inventory = create_sample_inventory()
-    
-    # Create calorie targets for two users
-    user_calorie_targets = {
-        "alice": [2000, 1800, 2200, 1900, 2100, 2300, 1900],  # Flexible weekly plan
-        "bob": [2500, 2400, 2600, 2300, 2700, 2800, 2200]     # Higher calorie needs
-    }
-    
-    # Create weekly meal plan
-    weekly_plan = service.create_weekly_meal_plan(
-        household_id="household_1",
-        user_calorie_targets=user_calorie_targets,
-        available_recipes=recipes,
-        household_inventory=inventory
+    recipe = Recipe(
+        name="Protein Bowl",
+        ingredients=[
+            Ingredient("chicken_breast", Decimal('6'), "oz"),
+            Ingredient("rice", Decimal('1'), "cup"),
+        ],
+        base_servings=1,
+        calories_per_serving=500,
     )
-    
-    print(f"✅ Weekly meal plan created:")
-    print(f"   Week starting: {weekly_plan.week_start_date}")
-    print(f"   Users planned: {len(weekly_plan.daily_plans)}")
-    print(f"   Grocery list items: {len(weekly_plan.grocery_list)}")
-    
-    # Show user summaries
-    for user_id, total_calories in weekly_plan.total_weekly_calories.items():
-        daily_plans = weekly_plan.daily_plans[user_id]
-        avg_daily = total_calories / len(daily_plans)
-        print(f"   {user_id}: {total_calories} cal/week (avg: {avg_daily:.0f} cal/day)")
-    
-    # Show grocery list sample
-    print(f"\n   Sample grocery items:")
-    for item in weekly_plan.grocery_list[:5]:  # Show first 5 items
-        print(f"   • {item.name}: {item.display_amount}")
-    
-    return len(weekly_plan.grocery_list) > 0
 
-def test_calorie_banking_integration():
-    """Test meal plan adjustment with calorie banking."""
-    print("\n💰 Testing Calorie Banking Integration")
-    print("=" * 40)
-    
+    recipe_entry = service.add_recipe_to_meal_plan(
+        "u", date.today(), "lunch", recipe, Decimal('2'),
+    )
+    almonds = service.search_food_database("almond")[0]
+    banana = service.search_food_database("banana")[0]
+    almond_entry = service.add_food_item_to_meal_plan(
+        "u", date.today(), "snack", almonds, Decimal('2'),
+    )
+    banana_entry = service.add_food_item_to_meal_plan(
+        "u", date.today(), "snack", banana, Decimal('1'),
+    )
+
+    plan = service.create_daily_meal_plan_from_entries(
+        "u", date.today(), 2000, [recipe_entry, almond_entry, banana_entry],
+    )
+
+    inventory = [InventoryItem("rice", Decimal('0.5'), "cup")]
+    grocery_list = service.generate_comprehensive_grocery_list([plan], inventory)
+
+    item_names = [item.name.lower() for item in grocery_list]
+    assert any("chicken" in n for n in item_names), item_names
+    assert any("almond" in n for n in item_names), item_names
+    assert any("banana" in n for n in item_names), item_names
+
+
+def test_generate_comprehensive_grocery_list_aggregates_repeated_food_items():
     service = MealPlanningService()
-    recipes = create_sample_recipes()
-    
-    # Create base daily plan
-    base_plan = service.create_daily_meal_plan(
-        user_id="alice",
-        target_date=date.today(),
-        target_calories=2000,
-        available_recipes=recipes
-    )
-    
-    print(f"✅ Base plan: {base_plan.total_calories} calories")
-    
-    # Test with banked calories (ate less yesterday)
-    banked_calories = 300
-    adjusted_plan = service.adjust_meal_plan_for_calorie_banking(
-        base_plan, banked_calories
-    )
-    
-    print(f"✅ With {banked_calories} banked calories: {adjusted_plan.total_calories} calories")
-    print(f"   New target: {adjusted_plan.target_calories}")
-    
-    # Test with borrowed calories (restaurant day)
-    borrowed_calories = -500
-    restaurant_plan = service.adjust_meal_plan_for_calorie_banking(
-        base_plan, borrowed_calories
-    )
-    
-    print(f"✅ With {abs(borrowed_calories)} borrowed calories: {restaurant_plan.total_calories} calories")
-    print(f"   New target: {restaurant_plan.target_calories}")
-    
-    return True
+    almonds = service.search_food_database("almond")[0]
+    e1 = service.add_food_item_to_meal_plan("u", date.today(), "snack", almonds, Decimal('2'))
+    e2 = service.add_food_item_to_meal_plan("u", date.today(), "snack", almonds, Decimal('3'))
 
-def test_meal_plan_summary():
-    """Test meal plan summary statistics."""
-    print("\n📈 Testing Meal Plan Summary")
-    print("=" * 30)
-    
-    service = MealPlanningService()
-    recipes = create_sample_recipes()
-    inventory = create_sample_inventory()
-    
-    # Create weekly plan
-    user_calorie_targets = {
-        "alice": [2000, 1800, 2200, 1900, 2100, 2300, 1900],
-        "bob": [2500, 2400, 2600, 2300, 2700, 2800, 2200]
-    }
-    
-    weekly_plan = service.create_weekly_meal_plan(
-        household_id="household_1",
-        user_calorie_targets=user_calorie_targets,
-        available_recipes=recipes,
-        household_inventory=inventory
-    )
-    
-    # Get summary
-    summary = service.get_meal_plan_summary(weekly_plan)
-    
-    print(f"✅ Meal plan summary:")
-    print(f"   Unique recipes used: {summary['total_unique_recipes']}")
-    print(f"   Total meals planned: {summary['total_meals_planned']}")
-    print(f"   Grocery list items: {summary['grocery_list_items']}")
-    print(f"   Week starting: {summary['week_start']}")
-    
-    print(f"\n   User summaries:")
-    for user_id, user_summary in summary['user_summaries'].items():
-        print(f"   {user_id}:")
-        print(f"     Weekly calories: {user_summary['total_weekly_calories']}")
-        print(f"     Daily average: {user_summary['average_daily_calories']:.0f}")
-        print(f"     Total meals: {user_summary['total_meals']}")
-    
-    return summary['total_unique_recipes'] > 0
+    plan = service.create_daily_meal_plan_from_entries("u", date.today(), 2000, [e1, e2])
+    grocery_list = service.generate_comprehensive_grocery_list([plan], [])
 
-if __name__ == "__main__":
-    print("🧪 Phase 4 Enhanced Meal Planning Test Suite")
-    print("=" * 50)
-    
-    success = True
-    
-    # Run all tests
-    success &= test_daily_meal_planning()
-    success &= test_weekly_meal_planning()
-    success &= test_calorie_banking_integration()
-    success &= test_meal_plan_summary()
-    
-    if success:
-        print("\n🎉 All Phase 4 integration tests passed!")
-        print("✅ Calorie-aware daily meal planning complete")
-        print("✅ Household weekly meal planning complete")
-        print("✅ Calorie banking integration complete")
-        print("✅ Grocery list integration complete")
-        print("\n🚀 Ready for Phase 5: Streamlit UI Implementation")
-    else:
-        print("\n❌ Some tests failed. Check the errors above.")
-        sys.exit(1)
+    almond_items = [i for i in grocery_list if "almond" in i.name.lower()]
+    assert len(almond_items) == 1
+    assert "5" in almond_items[0].display_amount  # 2 + 3 oz aggregated

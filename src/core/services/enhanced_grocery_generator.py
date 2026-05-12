@@ -12,7 +12,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from core.services.calorie_banking_service import CalorieBankingService, WeeklyDistribution
+from core.services.flexible_dieting import CalorieBankingService, WeeklyDistribution
 from core.services.macro_tracking_service import MacroTrackingService, MacroTargets
 from core.services.recipe_scaler import RecipeScaler
 from core.services.ingredient_aggregator import IngredientAggregator
@@ -407,27 +407,32 @@ class EnhancedGroceryListGenerator:
     
     def _extract_calorie_distribution(self, meal_plan: WeeklyMealPlan) -> 'WeeklyDistribution':
         """Extract calorie distribution from existing meal plan."""
-        from core.services.calorie_banking_service import DailyCalorieTarget, WeeklyDistribution
-        
+        from core.services.flexible_dieting import DailyCalorieTarget, WeeklyDistribution
+
         daily_targets = []
         total_calories = 0
-        
+
         for plan_date, plan_data in meal_plan.daily_plans.items():
             if plan_data["targets"]:
                 calories = plan_data["targets"].calories
             else:
                 calories = 0  # Special day
-            
+
             daily_targets.append(DailyCalorieTarget(
                 date=plan_date,
-                target_calories=calories,
-                is_special_day=plan_data.get("note") is not None
+                base_target=calories,
+                banked_calories=0,
+                borrowed_calories=0,
+                final_target=calories,
+                is_special_event=plan_data.get("note") is not None,
             ))
             total_calories += calories
-        
+
         return WeeklyDistribution(
-            weekly_target=total_calories,
+            week_start_date=meal_plan.week_start,
+            total_weekly_calories=total_calories,
             daily_targets=daily_targets,
             total_banked=0,
-            safety_warnings=[]
+            total_borrowed=0,
+            is_balanced=True,
         )

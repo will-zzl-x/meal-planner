@@ -8,18 +8,15 @@ from typing import List, Optional
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from ..core.interfaces.calorie_tracking_repository import ICalorieTrackingRepository, DailyCalorieLog, WeeklyCaloriePlan
-from ..database_manager import DatabaseManager
+from core.interfaces.calorie_tracking_repository import ICalorieTrackingRepository, DailyCalorieLog, WeeklyCaloriePlan
+from repositories.sqlite.database import DatabaseManager, to_date
 
 class SQLiteCalorieTrackingRepository(ICalorieTrackingRepository):
     """SQLite implementation of calorie tracking data access."""
-    
+
     def __init__(self, db_path: str = "meal_planner.db"):
         self.db_manager = DatabaseManager(db_path)
-        
-        # Initialize database if it doesn't exist
-        if not self.db_manager.check_database_exists():
-            self.db_manager.initialize_database()
+        self.db_manager.initialize_database()  # idempotent
     
     def log_daily_calories(self, log: DailyCalorieLog) -> DailyCalorieLog:
         """Log daily calorie consumption with banking."""
@@ -66,7 +63,7 @@ class SQLiteCalorieTrackingRepository(ICalorieTrackingRepository):
             
             return DailyCalorieLog(
                 user_id=row['user_id'],
-                date=datetime.fromisoformat(row['date']).date(),
+                date=to_date(row["date"]),
                 target_calories=row['target_calories'],
                 consumed_calories=row['consumed_calories'],
                 banked_calories=row['banked_calories'],
@@ -94,7 +91,7 @@ class SQLiteCalorieTrackingRepository(ICalorieTrackingRepository):
             for row in cursor.fetchall():
                 logs.append(DailyCalorieLog(
                     user_id=row['user_id'],
-                    date=datetime.fromisoformat(row['date']).date(),
+                    date=to_date(row["date"]),
                     target_calories=row['target_calories'],
                     consumed_calories=row['consumed_calories'],
                     banked_calories=row['banked_calories'],
@@ -158,7 +155,7 @@ class SQLiteCalorieTrackingRepository(ICalorieTrackingRepository):
             
             return WeeklyCaloriePlan(
                 user_id=row['user_id'],
-                week_start_date=datetime.fromisoformat(row['week_start_date']).date(),
+                week_start_date=to_date(row["week_start_date"]),
                 weekly_calorie_target=row['weekly_calorie_target'],
                 daily_targets=daily_targets,
                 special_events=None  # TODO: Implement special events

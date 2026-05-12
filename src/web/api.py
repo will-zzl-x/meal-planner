@@ -25,7 +25,7 @@ CORS(app)  # Enable CORS for frontend
 food_db = FoodDatabaseService()
 recipe_repo = SQLiteRecipeRepository()
 user_repo = SQLiteUserRepository()
-meal_planner = MealPlanningService(recipe_repo, food_db)
+meal_planner = MealPlanningService()
 
 @app.route('/api/foods/search', methods=['GET'])
 def search_foods():
@@ -38,19 +38,19 @@ def search_foods():
         # Run async search in sync context
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        results = loop.run_until_complete(food_db.search_food(query))
+        results = loop.run_until_complete(food_db.search_usda_database(query))
         loop.close()
-        
+
         # Convert to JSON-serializable format
         foods = []
         for food in results:
             foods.append({
                 'name': food.name,
-                'calories_per_100g': food.calories_per_100g,
-                'protein_g': float(food.protein_g),
-                'carbs_g': float(food.carbs_g),
-                'fat_g': float(food.fat_g),
-                'serving_size': food.serving_size,
+                'calories_per_unit': food.calories_per_unit,
+                'protein_per_unit': float(food.protein_per_unit),
+                'carbs_per_unit': float(food.carbs_per_unit),
+                'fats_per_unit': float(food.fats_per_unit),
+                'unit': food.unit,
                 'category': food.category,
                 'source': food.source
             })

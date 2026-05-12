@@ -15,9 +15,5 @@ CREATE TABLE IF NOT EXISTS weight_logs (
 -- Index for efficient weight tracking queries
 CREATE INDEX IF NOT EXISTS idx_weight_logs_user_date ON weight_logs(user_id, date);
 
--- Add trigger for weight logs
-CREATE TRIGGER IF NOT EXISTS update_weight_logs_timestamp 
-    AFTER UPDATE ON weight_logs
-    BEGIN
-        UPDATE weight_logs SET created_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-    END;
+-- (Trigger removed for Postgres compatibility. weight_logs rows are
+-- write-once — there was no real reason for an UPDATE-time trigger.)

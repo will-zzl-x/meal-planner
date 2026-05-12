@@ -12,20 +12,9 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from core.domain.models import Recipe, InventoryItem, GroceryListItem
+from core.domain.models import Recipe, InventoryItem, GroceryListItem, FoodItem
 from core.services import IngredientAggregator, RecipeScaler, UnitConverter, InventoryService
 from core.services.flexible_dieting import CalorieBankingService, WeightTrackingService
-
-@dataclass
-class FoodItem:
-    """Individual food item from database (not a recipe)."""
-    name: str
-    calories_per_100g: int
-    protein_g: Decimal
-    carbs_g: Decimal
-    fat_g: Decimal
-    serving_size: str  # "100g", "1 cup", "1 piece", etc.
-    category: str  # "food" or "restaurant"
 
 @dataclass
 class MealPlanEntry:
@@ -357,9 +346,7 @@ class MealPlanningService:
             scaled_recipes.append(recipe)
         
         # Use existing grocery list generation logic
-        aggregated = self._aggregator.aggregate_with_practical_scaling(
-            scaled_recipes, scale_factors, self._scaler
-        )
+        aggregated = self._aggregator.aggregate(scaled_recipes, scale_factors)
         
         # Subtract household inventory
         net_needs = self._inventory_service.subtract_inventory(aggregated, household_inventory)

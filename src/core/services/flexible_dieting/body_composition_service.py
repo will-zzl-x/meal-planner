@@ -24,9 +24,47 @@ class WeightLossRecommendation:
     timeline_weeks: Optional[int]
     safety_notes: List[str]
 
+@dataclass
+class BodyCompositionAssessment:
+    """Combined assessment used to seed initial daily/weekly calorie targets."""
+    body_fat_percentage: Decimal
+    recommended_weight_loss_per_week: Decimal  # As percentage of body weight
+    daily_calorie_target: int
+    weekly_calorie_target: int
+    assessment_category: str  # "lean", "average", "high_bf", etc.
+
 class BodyCompositionService:
     """Service for body composition assessment and weight loss recommendations."""
-    
+
+    # Body fat percentage category bands (fitness industry standard).
+    BF_CATEGORIES: Dict[str, Tuple[int, int]] = {
+        "essential": (2, 5),
+        "athletes": (6, 13),
+        "fitness": (14, 17),
+        "average": (18, 24),
+        "above_average": (25, 31),
+        "obese": (32, 100),
+    }
+
+    # Recommended weekly loss rate (as % of body weight) by category.
+    WEIGHT_LOSS_RATES_BY_CATEGORY: Dict[str, Decimal] = {
+        "essential": Decimal("0.5"),
+        "athletes": Decimal("0.5"),
+        "fitness": Decimal("1.0"),
+        "average": Decimal("1.0"),
+        "above_average": Decimal("1.5"),
+        "obese": Decimal("2.0"),
+    }
+
+    # Activity-level multipliers used to convert BMR -> TDEE.
+    ACTIVITY_MULTIPLIERS: Dict[str, Decimal] = {
+        "sedentary": Decimal("1.2"),
+        "light": Decimal("1.375"),
+        "moderate": Decimal("1.55"),
+        "active": Decimal("1.725"),
+        "very_active": Decimal("1.9"),
+    }
+
     def __init__(self):
         """Initialize body composition service with reference data."""
         self.body_fat_references = self._create_body_fat_references()
@@ -287,8 +325,76 @@ class BodyCompositionService:
         lean_mass = total_weight - fat_mass
         return lean_mass
     
-    def calculate_goal_weight(self, current_weight: Decimal, 
-                            current_bf: Decimal, 
+    def assess_body_composition(self, body_fat_percentage: Decimal,
+                                current_weight: Decimal,
+                                activity_level: str = "moderate") -> BodyCompositionAssessment:
+        """Produce an initial daily/weekly calorie target from body composition + activity.
+
+        Uses Katch-McArdle BMR → TDEE → deficit derived from body-fat category.
+        """
+        category = self._categorize_body_fat(body_fat_percentage)
+        loss_rate = self.WEIGHT_LOSS_RATES_BY_CATEGORY[category]
+
+        bmr = self._calculate_bmr(current_weight, body_fat_percentage)
+        tdee = self._calculate_tdee(bmr, activity_level)
+
+        weekly_weight_loss = current_weight * (loss_rate / 100)
+        weekly_deficit = int(weekly_weight_loss * 3500)  # 3500 cal ≈ 1 lb fat
+        daily_deficit = weekly_deficit // 7
+
+        # Floor at 10 cal/lb body weight to avoid unsafe targets.
+        daily_target = max(int(tdee - daily_deficit), int(current_weight * 10))
+        weekly_target = daily_target * 7
+
+        return BodyCompositionAssessment(
+            body_fat_percentage=body_fat_percentage,
+            recommended_weight_loss_per_week=loss_rate,
+            daily_calorie_target=daily_target,
+            weekly_calorie_target=weekly_target,
+            assessment_category=category,
+        )
+
+    def _categorize_body_fat(self, bf_percentage: Decimal) -> str:
+        """Map a body-fat % to one of the BF_CATEGORIES keys."""
+        bf_float = float(bf_percentage)
+        for category, (lo, hi) in self.BF_CATEGORIES.items():
+            if lo <= bf_float <= hi:
+                return category
+        return "average"
+
+    def _calculate_bmr(self, weight_lbs: Decimal, body_fat_percentage: Decimal) -> Decimal:
+        """Katch-McArdle BMR (lb input → kcal/day). More accurate when BF% is known."""
+        weight_kg = weight_lbs * Decimal("0.453592")
+        lean_mass_kg = weight_kg * (1 - body_fat_percentage / 100)
+        return 370 + (Decimal("21.6") * lean_mass_kg)
+
+    def _calculate_tdee(self, bmr: Decimal, activity_level: str) -> Decimal:
+        """Apply activity multiplier to BMR to get total daily energy expenditure."""
+        multiplier = self.ACTIVITY_MULTIPLIERS.get(activity_level, Decimal("1.55"))
+        return bmr * multiplier
+
+    def get_photo_reference_ranges(self) -> Dict[str, Tuple[int, int]]:
+        """Coarse body-fat ranges for a photo-based slider, distinct from the
+        detailed `body_fat_references` table used for descriptive comparison."""
+        return {
+            "very_lean": (8, 12),
+            "lean": (13, 17),
+            "average": (18, 24),
+            "soft": (25, 31),
+            "high": (32, 40),
+        }
+
+    def validate_calorie_target(self, target_calories: int, body_weight: Decimal) -> Tuple[bool, str]:
+        """Check that a daily calorie target is within safe bounds for a weight."""
+        min_calories = int(body_weight * 10)  # 10 cal/lb floor
+        if target_calories < min_calories:
+            return False, f"Target too low. Minimum {min_calories} calories for {body_weight} lbs body weight."
+        if target_calories > int(body_weight * 20):
+            return False, "Target very high. Consider consulting a nutritionist."
+        return True, "Target is within safe range."
+
+    def calculate_goal_weight(self, current_weight: Decimal,
+                            current_bf: Decimal,
                             target_bf: Decimal) -> Decimal:
         """
         Calculate goal weight to achieve target body fat percentage.

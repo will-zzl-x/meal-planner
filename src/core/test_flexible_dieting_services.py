@@ -1,196 +1,265 @@
-#!/usr/bin/env python3
 """
-Test Phase 3 Business Logic Services - Flexible Dieting Features
+Tests for the flexible-dieting business-logic services:
+WeightTrackingService, CalorieBankingService, BodyCompositionService.
 """
 import sys
-import os
 from pathlib import Path
 from decimal import Decimal
 from datetime import date, timedelta
 
-# Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
 from core.services.flexible_dieting import (
-    WeightTrackingService, WeightLog, 
-    CalorieBankingService,
-    BodyCompositionService
+    WeightTrackingService, WeightLog,
+    CalorieBankingService, DailyCalorieTarget, WeeklyDistribution,
+    BodyCompositionService,
 )
 
-def test_weight_tracking_service():
-    """Test weight tracking and TDEE estimation."""
-    print("⚖️  Testing WeightTrackingService")
-    print("=" * 35)
-    
+
+# --- WeightTrackingService -------------------------------------------------
+
+def _build_logs(start_weight: Decimal, days: int, daily_loss: Decimal) -> list:
+    """Build date-desc logs simulating weight loss: oldest entries are heavier."""
+    return [
+        WeightLog(
+            user_id="u",
+            date=date.today() - timedelta(days=i),
+            weight=start_weight + (i * daily_loss),  # i days ago, user weighed more
+            notes=f"day {i}",
+        )
+        for i in range(days)
+    ]
+
+
+def test_weekly_average_change_returns_zero_for_flat_weight():
     service = WeightTrackingService()
-    
-    # Create sample weight logs (losing 1 lb per week)
-    weight_logs = []
-    current_weight = Decimal('180')
-    
-    for i in range(28):  # 4 weeks of data
-        log_date = date.today() - timedelta(days=i)
-        # Simulate 1 lb loss per week with some variation
-        weight = current_weight - (i * Decimal('0.14')) + (Decimal('0.5') if i % 3 == 0 else Decimal('0'))
-        
-        weight_logs.append(WeightLog(
-            user_id="test_user",
-            date=log_date,
-            weight=weight,
-            notes=f"Day {i+1}"
-        ))
-    
-    # Test weekly average change calculation
-    weekly_change = service.calculate_weekly_average_change(weight_logs)
-    print(f"✅ Weekly average change: {weekly_change} lbs/week")
-    
-    # Test progress analysis
-    progress = service.analyze_weight_progress(weight_logs)
-    print(f"✅ Progress analysis:")
-    print(f"   Current: {progress.current_weight} lbs")
-    print(f"   Weekly change: {progress.weekly_change} lbs")
-    print(f"   Trend: {progress.trend_direction}")
-    
-    # Test TDEE estimation (mock calorie logs)
-    class MockCalorieLog:
-        def __init__(self, consumed_calories):
-            self.consumed_calories = consumed_calories
-    
-    calorie_logs = [MockCalorieLog(1800) for _ in range(28)]  # 1800 cal/day
-    
-    tdee_estimate = service.estimate_tdee(weight_logs, calorie_logs, current_weight)
-    print(f"✅ TDEE estimate:")
-    print(f"   Estimated TDEE: {tdee_estimate.estimated_tdee} calories")
-    print(f"   Confidence: {tdee_estimate.confidence_level}")
-    print(f"   Recommended daily: {tdee_estimate.recommended_daily_calories} calories")
-    
-    # Test weight loss rate calculation
-    bf_rate = service.calculate_target_weight_loss_rate(Decimal('20'))
-    print(f"✅ Weight loss rate for 20% BF: {bf_rate}% per week")
-    
-    return True
+    logs = _build_logs(Decimal('180'), days=14, daily_loss=Decimal('0'))
+    assert service.calculate_weekly_average_change(logs) == Decimal('0')
 
-def test_calorie_banking_service():
-    """Test calorie banking and weekly distribution."""
-    print("\n💰 Testing CalorieBankingService")
-    print("=" * 35)
-    
+
+def test_weekly_average_change_is_negative_for_consistent_loss():
+    service = WeightTrackingService()
+    # 0.143 lb/day ≈ 1 lb/week loss
+    logs = _build_logs(Decimal('180'), days=28, daily_loss=Decimal('0.143'))
+    weekly = service.calculate_weekly_average_change(logs)
+    assert weekly < 0
+    assert abs(weekly + Decimal('1')) < Decimal('0.5')  # within ~0.5 lb of -1
+
+
+def test_analyze_weight_progress_reports_current_weight():
+    service = WeightTrackingService()
+    logs = _build_logs(Decimal('180'), days=14, daily_loss=Decimal('0.1'))
+    progress = service.analyze_weight_progress(logs)
+    # Most recent log (day 0) is at the start_weight in our builder.
+    assert progress.current_weight == Decimal('180')
+
+
+def test_estimate_tdee_runs_for_typical_inputs():
+    service = WeightTrackingService()
+    logs = _build_logs(Decimal('180'), days=28, daily_loss=Decimal('0.143'))
+
+    class _Log:
+        def __init__(self, c):
+            self.consumed_calories = c
+
+    calorie_logs = [_Log(1800) for _ in range(28)]
+    tdee = service.estimate_tdee(logs, calorie_logs, Decimal('180'))
+
+    # If you're losing weight while eating 1800, TDEE must be > 1800.
+    assert tdee.estimated_tdee > 1800
+    assert tdee.recommended_daily_calories > 0
+
+
+# --- CalorieBankingService -------------------------------------------------
+
+def test_create_weekly_distribution_sums_to_total():
     service = CalorieBankingService()
-    user_weight = Decimal('180')
-    
-    # Test weekly distribution creation
-    weekly_target = 14000  # 2000 calories/day average
-    special_events = {
-        date.today() + timedelta(days=5): "Restaurant dinner"  # Friday
-    }
-    
+    weekly_target = 14000
     distribution = service.create_weekly_distribution(
-        weekly_target, user_weight, special_events
+        weekly_target, Decimal('180'), special_events={}
     )
-    
-    print(f"✅ Weekly distribution created:")
-    print(f"   Total weekly: {distribution.total_weekly_calories} calories")
-    print(f"   Total banked: {distribution.total_banked}")
-    print(f"   Total borrowed: {distribution.total_borrowed}")
-    print(f"   Balanced: {distribution.is_balanced}")
-    
-    # Show daily breakdown
-    for target in distribution.daily_targets:
-        day_name = target.date.strftime("%A")
-        special = " (SPECIAL)" if target.is_special_event else ""
-        print(f"   {day_name}: {target.final_target} calories{special}")
-    
-    # Test remaining calories calculation
-    consumed_so_far = [2000, 1800, 2200]  # 3 days consumed
-    remaining = service.calculate_remaining_weekly_calories(
-        weekly_target, consumed_so_far, 4
-    )
-    
-    print(f"✅ Remaining calories calculation:")
-    print(f"   Remaining total: {remaining['remaining_total']}")
-    print(f"   Daily average: {remaining['daily_average']}")
-    print(f"   Status: {remaining['status']}")
-    
-    # Test redistribution
-    current_dist = [2000] * 7
-    new_dist = service.suggest_calorie_redistribution(
-        current_dist, -700, user_weight, [4, 5]  # Reduce 700 cal, prioritize Fri/Sat
-    )
-    
-    print(f"✅ Calorie redistribution:")
-    print(f"   Original: {current_dist}")
-    print(f"   Adjusted: {new_dist}")
-    
-    # Test validation
-    validation = service.validate_weekly_distribution(new_dist, weekly_target - 700, user_weight)
-    print(f"✅ Distribution validation: {'Valid' if validation['is_valid'] else 'Invalid'}")
-    if validation['warnings']:
-        print(f"   Warnings: {validation['warnings']}")
-    
-    return True
+    total = sum(t.final_target for t in distribution.daily_targets)
+    assert total == weekly_target
+    assert len(distribution.daily_targets) == 7
 
-def test_body_composition_service():
-    """Test body composition and weight loss recommendations."""
-    print("\n🏋️  Testing BodyCompositionService")
-    print("=" * 35)
-    
+
+def test_create_weekly_distribution_marks_special_event_day():
+    service = CalorieBankingService()
+    # The planning week starts on Monday; pick an event day that's definitely in it.
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    event_date = week_start + timedelta(days=4)  # Friday of the current week
+    distribution = service.create_weekly_distribution(
+        14000, Decimal('180'), special_events={event_date: "wedding"}
+    )
+    special = [t for t in distribution.daily_targets if t.is_special_event]
+    assert len(special) == 1
+    assert special[0].date == event_date
+    # Special event days should have a higher allowance than the average baseline.
+    avg = 14000 // 7
+    assert special[0].final_target > avg
+
+
+def test_remaining_calories_calculation():
+    service = CalorieBankingService()
+    # 3 days: consumed 2000, 1800, 2200 = 6000 of 14000 weekly. 4 days left.
+    result = service.calculate_remaining_weekly_calories(
+        weekly_target=14000, consumed_so_far=[2000, 1800, 2200], days_remaining=4
+    )
+    assert result["remaining_total"] == 8000
+    assert result["daily_average"] == 2000
+
+
+def test_distribute_weekly_calories_basic_split_within_minimums():
+    service = CalorieBankingService()
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    distribution = service.distribute_weekly_calories(
+        weekly_target=14000,
+        body_weight=Decimal("180"),
+        week_start_date=week_start,
+    )
+    assert len(distribution.daily_targets) == 7
+    # Legacy alias still works for callers that read .target_calories.
+    assert all(t.target_calories == t.final_target for t in distribution.daily_targets)
+    # No special days so no day should fall below the per-pound minimum.
+    minimum = int(Decimal("180") * service.minimum_calories_per_lb)
+    assert all(t.final_target >= minimum for t in distribution.daily_targets)
+
+
+def test_distribute_weekly_calories_marks_restaurant_day():
+    service = CalorieBankingService()
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    friday = week_start + timedelta(days=4)
+    distribution = service.distribute_weekly_calories(
+        weekly_target=14000,
+        body_weight=Decimal("180"),
+        week_start_date=week_start,
+        special_days={friday: "restaurant"},
+    )
+    friday_target = next(t for t in distribution.daily_targets if t.date == friday)
+    assert friday_target.is_special_event
+    # Restaurant day should sit above the simple 14000/7 = 2000 average.
+    assert friday_target.final_target > 2000
+
+
+def test_calculate_banking_impact_under_and_over():
+    service = CalorieBankingService()
+    new_banked, msg = service.calculate_banking_impact(1800, 2000, 0)
+    assert new_banked == 200
+    assert "Banked" in msg
+
+    new_banked, msg = service.calculate_banking_impact(2300, 2000, 200)
+    assert new_banked == -100
+    assert "Used" in msg
+
+
+def test_redistribute_for_special_day_pulls_from_other_days():
+    service = CalorieBankingService()
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    distribution = service.distribute_weekly_calories(
+        weekly_target=14000,
+        body_weight=Decimal("180"),
+        week_start_date=week_start,
+    )
+    friday = week_start + timedelta(days=4)
+    redistributed = service.redistribute_for_special_day(
+        current_distribution=distribution,
+        special_date=friday,
+        estimated_calories=2800,
+        body_weight=Decimal("180"),
+    )
+    friday_target = next(t for t in redistributed.daily_targets if t.date == friday)
+    assert friday_target.final_target == 2800
+    other_totals = [t.final_target for t in redistributed.daily_targets if t.date != friday]
+    # Other days got reduced from their original ~2000 baseline.
+    assert max(other_totals) < 2000
+
+
+def test_validate_distribution_safety_flags_low_days():
+    service = CalorieBankingService()
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    unsafe = WeeklyDistribution(
+        week_start_date=week_start,
+        total_weekly_calories=8400,
+        daily_targets=[
+            DailyCalorieTarget(
+                date=week_start + timedelta(days=i),
+                base_target=1200, banked_calories=0, borrowed_calories=0,
+                final_target=1200,
+            )
+            for i in range(7)
+        ],
+        total_banked=0,
+        total_borrowed=0,
+        is_balanced=True,
+    )
+    warnings = service.validate_distribution_safety(unsafe, Decimal("180"))
+    assert len(warnings) >= 1
+
+
+# --- BodyCompositionService ------------------------------------------------
+
+def test_lean_body_mass_matches_formula():
     service = BodyCompositionService()
-    
-    # Test body fat references
-    references = service.get_body_fat_references()
-    print(f"✅ Body fat references: {len(references)} levels")
-    
-    # Show a few examples
-    for ref in references[:3]:
-        print(f"   {ref.percentage}%: {ref.description}")
-    
-    # Test weight loss recommendation
-    current_weight = Decimal('180')
-    current_bf = Decimal('22')
-    target_bf = Decimal('15')
-    
-    recommendation = service.calculate_weight_loss_recommendation(
-        current_weight, current_bf, target_bf
-    )
-    
-    print(f"✅ Weight loss recommendation:")
-    print(f"   Weekly loss rate: {recommendation.recommended_weekly_loss_rate}%")
-    print(f"   Max weekly loss: {recommendation.max_weekly_loss_pounds} lbs")
-    print(f"   Calorie deficit: {recommendation.recommended_calorie_deficit} cal/day")
-    print(f"   Timeline: {recommendation.timeline_weeks} weeks")
-    print(f"   Safety notes: {recommendation.safety_notes}")
-    
-    # Test goal weight calculation
-    goal_weight = service.calculate_goal_weight(current_weight, current_bf, target_bf)
-    print(f"✅ Goal weight calculation: {goal_weight} lbs")
-    
-    # Test lean body mass estimation
-    lean_mass = service.estimate_lean_body_mass(current_weight, current_bf)
-    print(f"✅ Estimated lean mass: {lean_mass} lbs")
-    
-    # Test slider data
-    slider_data = service.get_body_fat_slider_data()
-    print(f"✅ Slider data: {len(slider_data)} reference points")
-    
-    return True
+    weight = Decimal('200')
+    bf_pct = Decimal('20')
+    lean = service.estimate_lean_body_mass(weight, bf_pct)
+    # Lean = total * (1 - bf%/100) = 200 * 0.8 = 160
+    assert lean == Decimal('160')
 
-if __name__ == "__main__":
-    print("🧪 Phase 3 Business Logic Services Test Suite")
-    print("=" * 50)
-    
-    success = True
-    
-    # Run all tests
-    success &= test_weight_tracking_service()
-    success &= test_calorie_banking_service()
-    success &= test_body_composition_service()
-    
-    if success:
-        print("\n🎉 All Phase 3 business logic tests passed!")
-        print("✅ Weight tracking with TDEE estimation complete")
-        print("✅ Calorie banking and weekly distribution complete")
-        print("✅ Body composition with photo references complete")
-        print("\n🚀 Ready for Phase 4: Enhanced Grocery List Integration")
-    else:
-        print("\n❌ Some tests failed. Check the errors above.")
-        sys.exit(1)
+
+def test_goal_weight_preserves_lean_mass():
+    service = BodyCompositionService()
+    current_weight = Decimal('200')
+    current_bf = Decimal('20')   # → 160 lb lean
+    target_bf = Decimal('15')    # → goal_weight = 160 / (1 - 0.15) ≈ 188.235
+
+    goal = service.calculate_goal_weight(current_weight, current_bf, target_bf)
+    expected = Decimal('160') / Decimal('0.85')
+    assert abs(goal - expected) < Decimal('0.5')
+
+
+def test_body_fat_references_returned():
+    service = BodyCompositionService()
+    refs = service.get_body_fat_references()
+    assert len(refs) > 0
+    assert all(hasattr(r, 'percentage') for r in refs)
+
+
+def test_assess_body_composition_returns_safe_target():
+    service = BodyCompositionService()
+    result = service.assess_body_composition(
+        body_fat_percentage=Decimal("15"),
+        current_weight=Decimal("180"),
+        activity_level="moderate",
+    )
+    # Must respect 10 cal/lb floor and produce a self-consistent weekly total.
+    assert result.daily_calorie_target >= int(Decimal("180") * 10)
+    assert result.weekly_calorie_target == result.daily_calorie_target * 7
+    assert result.assessment_category in BodyCompositionService.BF_CATEGORIES
+
+
+def test_assess_body_composition_responds_to_activity_level():
+    service = BodyCompositionService()
+    sedentary = service.assess_body_composition(Decimal("20"), Decimal("170"), "sedentary")
+    very_active = service.assess_body_composition(Decimal("20"), Decimal("170"), "very_active")
+    # Higher activity → higher TDEE → higher target (deficit is held constant by category).
+    assert very_active.daily_calorie_target > sedentary.daily_calorie_target
+
+
+def test_get_photo_reference_ranges_keys():
+    service = BodyCompositionService()
+    ranges = service.get_photo_reference_ranges()
+    assert set(ranges.keys()) == {"very_lean", "lean", "average", "soft", "high"}
+
+
+def test_validate_calorie_target_floor_and_ceiling():
+    service = BodyCompositionService()
+    ok, _ = service.validate_calorie_target(2000, Decimal("180"))
+    assert ok is True
+
+    too_low, msg = service.validate_calorie_target(1200, Decimal("180"))
+    assert too_low is False
+    assert "Minimum" in msg
+
+    too_high, msg = service.validate_calorie_target(5000, Decimal("180"))
+    assert too_high is False
