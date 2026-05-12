@@ -130,10 +130,9 @@ def _render_recipe_list(user: UserProfile,
             if breakdown.lines
             else recipe.calories_per_serving
         )
-        tier_chip = f"[{recipe.tier}] " if recipe.tier else ""
         cal_label = f"{cal_per_serving} cal/serving" if cal_per_serving else "calories TBD"
         coverage_chip = _format_coverage_chip(coverage)
-        header_parts = [f"**{tier_chip}{recipe.name}**", cal_label]
+        header_parts = [f"**{recipe.name}**", cal_label]
         if coverage_chip:
             header_parts.append(coverage_chip)
         header_parts.append(f"serves {recipe.base_servings}")
@@ -275,11 +274,7 @@ def _render_add_recipe(user: UserProfile,
     st.markdown("**Step 2 — Recipe details**")
     with st.form("add_recipe_form", clear_on_submit=False):
         name = st.text_input("Recipe name").strip()
-        col1, col2 = st.columns(2)
-        with col1:
-            base_servings = st.number_input("Servings", min_value=1, max_value=50, value=1, step=1)
-        with col2:
-            tier = st.selectbox("Tier (optional)", options=["", "S", "A", "B", "C"], index=0)
+        base_servings = st.number_input("Servings", min_value=1, max_value=50, value=1, step=1)
         instructions_raw = st.text_area("Instructions (one step per line)", height=120)
         notes = st.text_area("Notes (optional)", height=80)
         submitted = st.form_submit_button("Save recipe", type="primary")
@@ -301,7 +296,6 @@ def _render_add_recipe(user: UserProfile,
             calories_per_serving=_per_serving_total(drafts, int(base_servings)),
             instructions=[s.strip() for s in instructions_raw.splitlines() if s.strip()],
             notes=notes.strip() or None,
-            tier=tier or None,
         )
         recipe_repo.save(recipe, household_id=user.household_id, created_by_user_id=user.user_id)
     except SecurityValidationError as e:
@@ -345,16 +339,10 @@ def _render_edit_recipe(user: UserProfile,
 
     with st.form(f"edit_recipe_form_{recipe.id}", clear_on_submit=False):
         name = st.text_input("Recipe name", value=recipe.name).strip()
-        col1, col2 = st.columns(2)
-        with col1:
-            base_servings = st.number_input(
-                "Servings", min_value=1, max_value=50,
-                value=recipe.base_servings, step=1,
-            )
-        with col2:
-            tier_opts = ["", "S", "A", "B", "C"]
-            tier_idx = tier_opts.index(recipe.tier) if recipe.tier in tier_opts else 0
-            tier = st.selectbox("Tier (optional)", options=tier_opts, index=tier_idx)
+        base_servings = st.number_input(
+            "Servings", min_value=1, max_value=50,
+            value=recipe.base_servings, step=1,
+        )
         instructions_raw = st.text_area(
             "Instructions (one step per line)",
             value="\n".join(recipe.instructions), height=120,
@@ -385,7 +373,6 @@ def _render_edit_recipe(user: UserProfile,
         recipe.calories_per_serving = _per_serving_total(drafts, int(base_servings))
         recipe.instructions = [s.strip() for s in instructions_raw.splitlines() if s.strip()]
         recipe.notes = notes.strip() or None
-        recipe.tier = tier or None
         result = recipe_repo.update(recipe, household_id=user.household_id)
     except SecurityValidationError as e:
         st.error(f"Invalid input: {e}")

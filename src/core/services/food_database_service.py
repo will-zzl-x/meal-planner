@@ -39,6 +39,36 @@ _USDA_NUTRIENT_PROTEIN = 1003
 _USDA_NUTRIENT_CARBS = 1005
 _USDA_NUTRIENT_FAT = 1004
 
+
+def _normalize_tokens(s: str) -> set:
+    """Lowercase, drop punctuation, strip trailing 's' for crude singularization.
+    Used by the sample-DB matcher so "chicken breasts" and "Chicken Breast"
+    match without us maintaining plural variants of every entry."""
+    import re
+    cleaned = re.sub(r"[(),.]", " ", s.lower())
+    tokens = set()
+    for raw in cleaned.split():
+        t = raw.strip()
+        if not t:
+            continue
+        # Crude singularization: trailing 's' on words >3 chars (keeps "us", "as" alone).
+        if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
+            t = t[:-1]
+        tokens.add(t)
+    return tokens
+
+
+def _first_token(s: str) -> str:
+    """Lowercase first word, sans punctuation and trailing 's'."""
+    import re
+    parts = re.sub(r"[(),.]", " ", s.lower()).split()
+    if not parts:
+        return ""
+    t = parts[0]
+    if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
+        t = t[:-1]
+    return t
+
 _HTTP_TIMEOUT_SECONDS = 5
 
 
@@ -167,12 +197,36 @@ class FoodDatabaseService:
 
     def _search_sample_database(self, query: str,
                                 category: Optional[str] = None) -> List[FoodItem]:
-        q = query.lower()
-        return [
-            item for item in self._sample_database
-            if q in item.name.lower()
-            and (category is None or item.category == category)
-        ]
+        """Token-based, plural-tolerant match, with a strong bias toward
+        items whose name leads with the same primary noun as the query.
+
+        - An item is a *candidate* when its tokens are a subset of the
+          query's tokens (the query describes the item) or vice versa.
+        - Candidates are then ranked by (first-token-match, overlap,
+          item-token-count) so e.g. "Avocado oil for green onions"
+          surfaces "Avocado Oil" before "Green Onion" before "Onion".
+        """
+        q_tokens = _normalize_tokens(query)
+        if not q_tokens:
+            return []
+        q_first = _first_token(query)
+
+        scored = []
+        for item in self._sample_database:
+            if category is not None and item.category != category:
+                continue
+            item_tokens = _normalize_tokens(item.name)
+            if not item_tokens:
+                continue
+            if not (item_tokens.issubset(q_tokens) or q_tokens.issubset(item_tokens)):
+                continue
+            overlap = len(q_tokens & item_tokens)
+            item_first = _first_token(item.name)
+            first_match = 1 if item_first == q_first else 0
+            score = (first_match, overlap, len(item_tokens))
+            scored.append((score, item))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [item for _, item in scored]
 
     def _create_comprehensive_sample_database(self) -> List[FoodItem]:
         """Sample nutrition database used as the offline fallback for food
@@ -229,6 +283,72 @@ class FoodDatabaseService:
             FoodItem("Salt", 0, zero, zero, zero, "100g", "spice", "sample"),
             FoodItem("Black Pepper", 251, Decimal('10'), Decimal('64'), Decimal('3.3'), "100g", "spice", "sample"),
             FoodItem("Garlic Powder", 331, Decimal('17'), Decimal('73'), Decimal('0.7'), "100g", "spice", "sample"),
+            FoodItem("Onion Powder", 341, Decimal('10'), Decimal('79'), Decimal('1'), "100g", "spice", "sample"),
+            FoodItem("Paprika", 282, Decimal('14'), Decimal('54'), Decimal('13'), "100g", "spice", "sample"),
+            FoodItem("Smoked Paprika", 282, Decimal('14'), Decimal('54'), Decimal('13'), "100g", "spice", "sample"),
+            FoodItem("Chili Powder", 282, Decimal('13'), Decimal('50'), Decimal('14'), "100g", "spice", "sample"),
+            FoodItem("Cumin", 375, Decimal('18'), Decimal('44'), Decimal('22'), "100g", "spice", "sample"),
+            FoodItem("Oregano", 265, Decimal('9'), Decimal('69'), Decimal('4.3'), "100g", "spice", "sample"),
+            FoodItem("Rosemary", 131, Decimal('3.3'), Decimal('21'), Decimal('5.9'), "100g", "spice", "sample"),
+            FoodItem("Five Spice Powder", 320, Decimal('7'), Decimal('60'), Decimal('8'), "100g", "spice", "sample"),
+            FoodItem("White Pepper", 296, Decimal('10'), Decimal('69'), Decimal('2.1'), "100g", "spice", "sample"),
+
+            # More proteins — covers chicken thigh "thighs" plural, salmon variants, beef variants.
+            FoodItem("Salmon", 208, Decimal('22'), zero, Decimal('12'), "100g", "protein", "sample"),
+
+            # More starches / canned goods.
+            FoodItem("Short Grain Rice Dry", 360, Decimal('7'), Decimal('80'), Decimal('0.6'), "100g", "grain", "sample"),
+            FoodItem("Spaghetti", 371, Decimal('13'), Decimal('75'), Decimal('1.5'), "100g", "grain", "sample"),
+            FoodItem("Flour", 364, Decimal('10'), Decimal('76'), Decimal('1'), "100g", "grain", "sample"),
+            FoodItem("Corn Flakes", 378, Decimal('7'), Decimal('84'), Decimal('1'), "100g", "grain", "sample"),
+            FoodItem("Black Beans Canned", 91, Decimal('6'), Decimal('16'), Decimal('0.3'), "100g", "legume", "sample"),
+            FoodItem("Crushed Tomatoes Canned", 32, Decimal('1.6'), Decimal('7'), Decimal('0.3'), "100g", "vegetable", "sample"),
+            FoodItem("Chopped Tomatoes Canned", 32, Decimal('1.6'), Decimal('7'), Decimal('0.3'), "100g", "vegetable", "sample"),
+            FoodItem("Tomato Paste", 82, Decimal('4.3'), Decimal('19'), Decimal('0.5'), "100g", "vegetable", "sample"),
+
+            # More veg & fruit.
+            FoodItem("Carrot", 41, Decimal('0.9'), Decimal('10'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Celery", 16, Decimal('0.7'), Decimal('3'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Napa Cabbage", 16, Decimal('1.2'), Decimal('3.2'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Cabbage", 25, Decimal('1.3'), Decimal('6'), Decimal('0.1'), "100g", "vegetable", "sample"),
+            FoodItem("Bean Sprouts", 30, Decimal('3'), Decimal('6'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Bok Choy", 13, Decimal('1.5'), Decimal('2.2'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Gai Lan", 22, Decimal('1.9'), Decimal('4.7'), Decimal('0.4'), "100g", "vegetable", "sample"),
+            FoodItem("Kale", 49, Decimal('4.3'), Decimal('9'), Decimal('0.9'), "100g", "vegetable", "sample"),
+            FoodItem("Cauliflower Rice", 25, Decimal('1.9'), Decimal('5'), Decimal('0.3'), "100g", "vegetable", "sample"),
+            FoodItem("Roma Tomato", 22, Decimal('1.1'), Decimal('4.8'), Decimal('0.2'), "piece", "vegetable", "sample"),
+            FoodItem("Lime", 20, Decimal('0.5'), Decimal('7'), Decimal('0.1'), "piece", "fruit", "sample"),
+            FoodItem("Lemon", 17, Decimal('0.6'), Decimal('5.4'), Decimal('0.2'), "piece", "fruit", "sample"),
+            FoodItem("Avocado", 234, Decimal('2.9'), Decimal('12'), Decimal('21'), "piece", "fruit", "sample"),
+            FoodItem("Cucumber", 15, Decimal('0.7'), Decimal('3.6'), Decimal('0.1'), "100g", "vegetable", "sample"),
+            FoodItem("Pineapple", 50, Decimal('0.5'), Decimal('13'), Decimal('0.1'), "100g", "fruit", "sample"),
+            FoodItem("Cilantro", 23, Decimal('2.1'), Decimal('3.7'), Decimal('0.5'), "100g", "herb", "sample"),
+            FoodItem("Parsley", 36, Decimal('3'), Decimal('6'), Decimal('0.8'), "100g", "herb", "sample"),
+            FoodItem("Ginger", 80, Decimal('1.8'), Decimal('18'), Decimal('0.8'), "100g", "herb", "sample"),
+            FoodItem("Spring Onion", 32, Decimal('1.8'), Decimal('7.3'), Decimal('0.2'), "100g", "vegetable", "sample"),
+            FoodItem("Green Onion", 32, Decimal('1.8'), Decimal('7.3'), Decimal('0.2'), "100g", "vegetable", "sample"),
+
+            # More fats / oils.
+            FoodItem("Avocado Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("Sesame Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("Grape Seed Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("Vegetable Oil", 884, zero, zero, Decimal('100'), "100g", "oil", "sample"),
+            FoodItem("Ghee", 900, zero, zero, Decimal('100'), "100g", "fat", "sample"),
+
+            # More sauces / pantry staples.
+            FoodItem("Rice Vinegar", 18, zero, Decimal('0.04'), zero, "100g", "sauce", "sample"),
+            FoodItem("Sherry Vinegar", 19, zero, Decimal('0.4'), zero, "100g", "sauce", "sample"),
+            FoodItem("Hot Sauce", 11, Decimal('0.5'), Decimal('1.8'), Decimal('0.3'), "100g", "sauce", "sample"),
+            FoodItem("Sriracha", 93, Decimal('1.9'), Decimal('19'), Decimal('0.9'), "100g", "sauce", "sample"),
+            FoodItem("Gochujang", 240, Decimal('5.4'), Decimal('52'), Decimal('1.4'), "100g", "sauce", "sample"),
+            FoodItem("Gochugaru", 282, Decimal('13'), Decimal('50'), Decimal('14'), "100g", "spice", "sample"),
+            FoodItem("Chili Crisp", 600, Decimal('5'), Decimal('15'), Decimal('60'), "100g", "sauce", "sample"),
+            FoodItem("Adobo Sauce", 80, Decimal('2'), Decimal('17'), Decimal('1.5'), "100g", "sauce", "sample"),
+            FoodItem("Pickle Juice", 11, zero, Decimal('2.5'), zero, "100g", "sauce", "sample"),
+            FoodItem("Beef Bouillon", 211, Decimal('9'), Decimal('22'), Decimal('10'), "100g", "sauce", "sample"),
+
+            # Branded / convenience.
+            FoodItem("Mozzarella Cheese", 280, Decimal('22'), Decimal('2.2'), Decimal('17'), "100g", "dairy", "sample"),
         ]
 
 

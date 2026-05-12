@@ -9,13 +9,15 @@ headless = true
 # Don't ping Streamlit's stats endpoint.
 gatherUsageStats = false
 
-# EveryBite theme — inspired by EveryDollar (Ramsey's budgeting app):
-# clean light surface, deep navy primary for trust/structure, warm gold
-# accent for action highlights. Adjust here only — every page picks it up.
+# EveryBite theme — EveryDollar's "clean, responsible, no-nonsense" structure
+# warmed up for food. Deep navy primary for trust/structure; soft cream
+# background instead of stark white so the whole page reads differently from
+# default Streamlit; warmer secondary surface for cards/sidebar contrast.
+# Adjust here only — every page picks it up.
 [theme]
 base = "light"
-primaryColor = "#0A2540"             # deep navy — buttons, focus rings, links
-backgroundColor = "#FFFFFF"          # canvas
-secondaryBackgroundColor = "#F4F6F8" # cards, sidebar, code blocks
-textColor = "#1F2937"                # near-black, easier on eyes than pure black
+primaryColor = "#0F4C75"              # Deep navy — buttons, focus rings, links
+backgroundColor = "#FBFAF6"           # Soft warm off-white (not pure white)
+secondaryBackgroundColor = "#F0EBE0"  # Cream — cards, sidebar, code blocks
+textColor = "#1A1A1A"                 # Near-black, slightly softer than #000
 font = "sans serif"

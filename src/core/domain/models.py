@@ -37,7 +37,6 @@ class Recipe:
     id: Optional[str] = None  # Populated by repository reads; None for unsaved.
     instructions: List[str] = field(default_factory=list)  # Step-by-step cooking directions.
     notes: Optional[str] = None  # Free-form context (source, tweaks, status flags).
-    tier: Optional[str] = None   # Personal rating: "S" / "A" / "B" / "C" / "D" / "E" / None.
 
     def __post_init__(self):
         """Validate recipe data on creation."""

@@ -64,6 +64,30 @@ _UNIT_TO_GRAMS = {
     "teaspoon": Decimal("5"),
     "teaspoons": Decimal("5"),
     "ml": Decimal("1"),       # treat ml ≈ g for cooking purposes
+    # Rough approximations for fuzzy recipe-author units. These are
+    # deliberately wrong-but-useful — better a 30% off calorie estimate than
+    # nothing for an ingredient line. Used only when the catalog item is
+    # mass-based and the recipe didn't pick a precise unit.
+    "pinch": Decimal("0.3"),
+    "pinches": Decimal("0.3"),
+    "dash": Decimal("0.6"),
+    "dashes": Decimal("0.6"),
+    "sprig": Decimal("2"),
+    "sprigs": Decimal("2"),
+    "handful": Decimal("15"),
+    "handfuls": Decimal("15"),
+    "bunch": Decimal("50"),
+    "bunches": Decimal("50"),
+    "bag": Decimal("200"),
+    "bags": Decimal("200"),
+    "can": Decimal("400"),       # canned-good standard "1 can ≈ 400g"
+    "cans": Decimal("400"),
+    "stalk": Decimal("40"),      # celery / scallion stalk
+    "stalks": Decimal("40"),
+    "head": Decimal("400"),      # lettuce / cabbage head
+    "heads": Decimal("400"),
+    "clove": Decimal("3"),       # garlic clove — only matters if the catalog is mass-based
+    "cloves": Decimal("3"),
 }
 
 # Recipe units that mean "discrete pieces" — when the catalog item is
@@ -195,11 +219,22 @@ class SeedRecipeBackfiller:
                 if catalog:
                     total_cal += int(round(float(ing.servings) * catalog.calories_per_serving))
         recipe.ingredients = new_ingredients
-        recipe.calories_per_serving = (
+        recomputed_per_serving = (
             int(round(total_cal / recipe.base_servings))
             if recipe.base_servings > 0 else 0
         )
-        result.new_calories_per_serving = recipe.calories_per_serving
+        # Guard against a bad partial backfill clobbering a seed-author's
+        # hand-computed calorie estimate. If the original is non-zero and
+        # our recompute lands far below it (under 60%), we assume too many
+        # ingredients failed to match for the new number to be trustworthy
+        # and keep the original. The user can still inspect / fix individual
+        # ingredient links via the recipe picker.
+        original = recipe.calories_per_serving
+        if original > 0 and recomputed_per_serving < original * 0.6:
+            result.new_calories_per_serving = original
+        else:
+            recipe.calories_per_serving = recomputed_per_serving
+            result.new_calories_per_serving = recomputed_per_serving
         # If the seed recipe carried a "[calories pending lookup]" marker
         # in its notes, drop it now that we've actually computed calories.
         # Whitespace around the marker is also tidied so we don't leave a
