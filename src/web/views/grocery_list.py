@@ -21,7 +21,9 @@ def render(user: UserProfile,
            recipe_repo: SQLiteRecipeRepository,
            inventory_repo: SQLiteInventoryRepository,
            grocery_service: GroceryListService) -> None:
-    st.title("Grocery List")
+    from web.navigation import page as nav_page
+    st.title("Groceries")
+    st.caption("Everything you still need to cook this week's meals.")
     if not user.household_id:
         st.warning("You're not in a household yet. Ask the planner for an invite code.")
         return
@@ -29,11 +31,13 @@ def render(user: UserProfile,
     _render_pantry_freshness_banner(user, inventory_repo)
 
     monday = _current_week_monday()
-    st.caption(f"For week of {monday.strftime('%b %d, %Y')} (use the Weekly Plan page to switch weeks)")
+    st.caption(f"For week of {monday.strftime('%b %d, %Y')} (switch weeks on the Plan page)")
 
     entries = plan_repo.find_by_week(user.household_id, monday)
     if not entries:
         st.info("No meals planned this week yet.")
+        if (plan := nav_page("plan")):
+            st.page_link(plan, label="Plan this week", icon=":material/calendar_month:")
         return
 
     recipes_by_id = {r.id: r for r in recipe_repo.find_all_by_household(user.household_id)}
@@ -42,6 +46,8 @@ def render(user: UserProfile,
 
     if not items:
         st.success("Your pantry already covers everything you've planned this week!")
+        if (pantry_pg := nav_page("pantry")):
+            st.page_link(pantry_pg, label="Open the Pantry", icon=":material/kitchen:")
         return
 
     st.write(f"**{len(items)} item(s) to buy:**")
@@ -66,21 +72,25 @@ def _render_pantry_freshness_banner(user: UserProfile,
     """If the pantry hasn't been reviewed in >3 days, surface a warning.
     The grocery list subtracts pantry inventory, so a stale pantry
     silently makes the list wrong (showing items you actually have)."""
+    from web.navigation import page as nav_page
     last = inventory_repo.last_reviewed_at(user.household_id)
     if last is None:
         st.warning(
-            "Pantry has never been reviewed. The grocery list will show "
-            "everything as 'needed' — head to the Pantry page first to "
-            "log what you already have."
+            "Pantry has never been reviewed. The list below assumes you "
+            "have nothing on hand — open the Pantry first to log what you "
+            "already have."
         )
+        if (pantry := nav_page("pantry")):
+            st.page_link(pantry, label="Open the Pantry", icon=":material/kitchen:")
         return
     days = _days_since(last)
     if days > 3:
         st.warning(
             f"Last pantry check-in was {days} days ago. The grocery list "
-            "may be off. Head to the Pantry page → tap **Quick check-in** "
-            "to bring it current."
+            "may be off until you confirm what you still have."
         )
+        if (pantry := nav_page("pantry")):
+            st.page_link(pantry, label="Quick check-in", icon=":material/kitchen:")
     else:
         st.caption(f"_Pantry checked {days} day(s) ago._")
 
