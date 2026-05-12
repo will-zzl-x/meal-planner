@@ -158,11 +158,13 @@ def render_login_form() -> None:
     if missing:
         st.error(f"Please fill in: {', '.join(missing)}")
         return
-    user = get_auth_service().login(email, password)
+    with st.spinner("Signing you in..."):
+        user = get_auth_service().login(email, password)
     if user is None:
         st.error("Invalid email or password.")
         return
     st.session_state.user = user
+    st.session_state.welcome_toast = f"Welcome back, {user.name}!"
     st.rerun()
 
 
@@ -188,14 +190,20 @@ def render_register_household_form() -> None:
         st.error(f"Please fill in: {', '.join(missing)}")
         return
     try:
-        result = get_auth_service().register_household(
-            planner_name, email, password, household_name,
-        )
+        with st.spinner("Setting up your household and starter recipes — this takes a few seconds..."):
+            result = get_auth_service().register_household(
+                planner_name, email, password, household_name,
+            )
     except EmailAlreadyRegisteredError:
         st.error("An account with that email already exists.")
         return
+    except Exception as exc:
+        st.error(f"Couldn't create the household: {exc}")
+        return
     st.session_state.user = result.user
-    st.success(f"Household '{result.household.name}' created. Welcome, {result.user.name}!")
+    st.session_state.welcome_toast = (
+        f"Household '{result.household.name}' created. Welcome, {result.user.name}!"
+    )
     st.rerun()
 
 
@@ -220,20 +228,25 @@ def render_register_member_form() -> None:
         st.error(f"Please fill in: {', '.join(missing)}")
         return
     try:
-        user = get_auth_service().register_member(name, email, password, invite_code)
+        with st.spinner("Joining the household..."):
+            user = get_auth_service().register_member(name, email, password, invite_code)
     except HouseholdNotFoundError:
         st.error("That invite code doesn't match any household. Double-check it with the planner.")
         return
     except EmailAlreadyRegisteredError:
         st.error("An account with that email already exists.")
         return
+    except Exception as exc:
+        st.error(f"Couldn't join the household: {exc}")
+        return
     st.session_state.user = user
-    st.success(f"Welcome to the household, {user.name}!")
+    st.session_state.welcome_toast = f"Welcome to the household, {user.name}!"
     st.rerun()
 
 
 def render_unauthenticated() -> None:
-    st.title("Meal Planner")
+    st.title("EveryBite")
+    st.caption("Meal planning that fits your week.")
     tab_login, tab_new, tab_join = st.tabs(["Log in", "Start a household", "Join a household"])
     with tab_login:
         render_login_form()
@@ -322,6 +335,11 @@ def household_page_entry() -> None:
 
 
 def render_authenticated() -> None:
+    # Cross-rerun toast: set during login / registration; consumed once here so
+    # the user sees a confirmation after we navigate them to the Today page.
+    toast = st.session_state.pop("welcome_toast", None)
+    if toast:
+        st.toast(toast, icon=":material/check_circle:")
     pages = [
         st.Page(today_page_entry, title="Today", icon=":material/today:", default=True),
         st.Page(weekly_plan_page_entry, title="Weekly Plan", icon=":material/calendar_month:"),
@@ -338,7 +356,7 @@ def render_authenticated() -> None:
 # --- Entry ---------------------------------------------------------------
 
 def main() -> None:
-    st.set_page_config(page_title="Meal Planner", layout="centered")
+    st.set_page_config(page_title="EveryBite", page_icon=":material/restaurant:", layout="centered")
     if "user" in st.session_state:
         render_authenticated()
     else:
