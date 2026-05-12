@@ -93,7 +93,6 @@ def test_recipe_update_replaces_fields_and_ingredients(tmp_path):
 
     saved.name = "Chicken bowl"
     saved.calories_per_serving = 720
-    saved.tier = "S"
     saved.notes = "Updated"
     saved.instructions = ["Step 1", "Step 2"]
     saved.ingredients = [
@@ -104,7 +103,6 @@ def test_recipe_update_replaces_fields_and_ingredients(tmp_path):
 
     reloaded = recipes.find_by_id(saved.id, h.id)
     assert reloaded.calories_per_serving == 720
-    assert reloaded.tier == "S"
     assert reloaded.notes == "Updated"
     assert reloaded.instructions == ["Step 1", "Step 2"]
     assert [(i.name, i.quantity) for i in reloaded.ingredients] == [("chicken thigh", Decimal("8"))]
@@ -122,7 +120,7 @@ def test_recipe_update_returns_none_for_wrong_household(tmp_path):
 
 
 def test_recipe_metadata_roundtrips(tmp_path):
-    """Recipe.instructions / notes / tier and Ingredient.store all persist."""
+    """Recipe.instructions / notes and Ingredient.store all persist."""
     households, users, recipes = _setup(tmp_path)
     h = households.create("Smiths")
     alice = users.create_user("Alice", "a@example.com", household_id=h.id, is_planner=True)
@@ -137,13 +135,11 @@ def test_recipe_metadata_roundtrips(tmp_path):
         calories_per_serving=400,
         instructions=["Chop everything", "Cook it"],
         notes="A note with [chips] and full sentences.",
-        tier="A",
     )
     recipes.save(rich, household_id=h.id, created_by_user_id=alice.user_id)
 
     reloaded = recipes.find_by_name("Tagged recipe", household_id=h.id)
     assert reloaded is not None
-    assert reloaded.tier == "A"
     assert reloaded.notes == "A note with [chips] and full sentences."
     assert reloaded.instructions == ["Chop everything", "Cook it"]
     by_name = {ing.name: ing for ing in reloaded.ingredients}

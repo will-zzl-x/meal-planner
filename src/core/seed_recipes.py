@@ -45,7 +45,6 @@ def all_seed_recipes() -> List[Recipe]:
             name="Chicken Teriyaki",
             base_servings=4,
             calories_per_serving=0,
-            tier="S",
             notes=_notes(
                 "[Protein: Chicken Thigh] [Slots: M2]", _PENDING,
                 "Scale to 2 packs (8 thighs) for 8 servings. Marinate 30 min to overnight.",
@@ -73,7 +72,6 @@ def all_seed_recipes() -> List[Recipe]:
             name="Cheesy Chipotle Chicken Rice Bowls",
             base_servings=5,
             calories_per_serving=585,
-            tier="B",
             notes=_notes(
                 "[Protein: Chicken Thigh] [Slots: M2]",
                 "585 cal / 52g protein / 57g carbs / 17g fat per serving. Air fryer only. From @stealth_health_life.",
@@ -115,7 +113,6 @@ def all_seed_recipes() -> List[Recipe]:
             name="Hoisin Chicken Thigh Chow Mein",
             base_servings=5,
             calories_per_serving=0,
-            tier="A",
             notes=_notes(
                 "[Protein: Chicken Thigh] [Slots: M2]", _PENDING,
                 "ON BREAK - rotate back in a future cycle. Adapted from Joshua Weissman. Protein doubled to 4 thighs, sauce scaled 1.5x, garlic bumped to 10 cloves. Veg quantities increased across the board. Dutch oven recommended given large volume. Optional toppings: fried egg, chili oil.",
@@ -152,7 +149,6 @@ def all_seed_recipes() -> List[Recipe]:
             name="Mexican Chicken and Rice",
             base_servings=4,
             calories_per_serving=450,
-            tier="C",
             notes=_notes(
                 "[Protein: Chicken Breast] [Slots: M2]",
                 "450 cal / 45g protein / 47g carbs / 9g fat per serving (original macros - black beans and rice adjusted so may vary). Dutch oven recommended. Liquid ratio 2:1 - tomatoes provide ~1.5 cups + 1 cup stock = ~2.5 cups total for 1.2 cups rice. Do NOT add lime to chicken marinade - add at liquid step.",
@@ -191,7 +187,6 @@ def all_seed_recipes() -> List[Recipe]:
             name="Crispy Chicken Sandwiches",
             base_servings=8,
             calories_per_serving=440,
-            tier="A",
             notes=_notes(
                 "[Protein: Chicken Breast] [Slots: M4]",
                 "440 cal / 50g protein / 43g carbs / 6g fat per sandwich. From @stealth_health_life. Parcooked for meal prep - finish on reheat day. Meal 4 only, does not reheat well in microwave.",
@@ -258,71 +253,12 @@ def all_seed_recipes() -> List[Recipe]:
             ],
         ),
         Recipe(
-            name="Costco Salmon Milano with Asparagus",
-            base_servings=5,
-            calories_per_serving=0,
-            notes=_notes(
-                "[Protein: Salmon] [Slots: M4]", _PENDING,
-                "ON BREAK - rotate back in a future cycle. Take-and-bake - pesto butter comes pre-applied. Do NOT microwave leftovers - reheat in oven or air fryer at 325F to preserve texture and avoid fish smell.",
-            ),
-            instructions=[
-                "Preheat oven to 400F.",
-                "Place salmon in its Costco tray (remove plastic lid) or on a foil-lined baking sheet skin side down.",
-                "Bake 15-20 minutes until salmon flakes easily and internal temp reaches 145F. Baste with melted pesto butter from tray halfway through.",
-                "While salmon bakes, toss asparagus with 1 tbsp olive oil, salt + pepper on a separate sheet pan. Roast at 400F for 12-15 minutes.",
-                "Divide into 6 portions: salmon fillet + asparagus. Finish each with a squeeze of lemon.",
-            ],
-            ingredients=[
-                _ing("Costco Salmon Milano with Basil Pesto Butter", "1", "tray", "Costco"),
-                _ing("Asparagus trimmed", "1.1", "lb", "Costco"),
-                _ing("Olive oil", "1", "tbsp", "Walmart"),
-                _ing("Salt + pepper (to taste)", "0", "tsp", "Walmart"),
-                _ing("Lemon", "1", "lemon", "Walmart"),
-            ],
-        ),
-        Recipe(
-            name="Chicken Breast Potato Zucchini Hash",
-            base_servings=4,
-            calories_per_serving=0,
-            notes=_notes(
-                "[Protein: Chicken Breast] [Slots: M3]", _PENDING,
-                "Meal 3 only. Fully cooked - reheat in microwave with a splash of water. Parboiling potatoes first is key for even cooking in skillet.",
-            ),
-            instructions=[
-                "Parboil diced potatoes in salted water for 6-8 minutes until just barely fork tender. Drain.",
-                "Toss diced zucchini with 1 tbsp olive oil, salt + pepper. Air fry at 400F for 10-12 minutes, shaking halfway, until caramelized. Set aside.",
-                "Heat 1 tbsp avocado oil in a large skillet over medium-high. Add chicken, season with garlic powder, paprika, onion powder, salt + pepper. Cook 6-8 minutes until cooked through. Set aside.",
-                "In same skillet add remaining 1 tbsp avocado oil and parboiled potatoes, press flat, let sit 3-4 minutes undisturbed to develop a crust. Add minced garlic, flip and cook another 3 minutes.",
-                "Return chicken and zucchini to skillet. Toss everything together, taste and adjust seasoning.",
-                "Mix sauce: 1 tbsp + 1 tsp honey + 4 tbsp chipotle in adobo + juice of 1 lime + 1 cup Greek yogurt + salt + pepper. Whisk until smooth.",
-                "Divide into 4 containers, drizzle sauce over each, garnish with parsley. Reheat in microwave with a splash of water.",
-            ],
-            ingredients=[
-                _ing("Chicken breasts diced (~12oz each)", "2", "breasts", "Costco"),
-                _ing("Idaho potatoes diced", "2", "large", "Walmart"),
-                _ing("Zucchini diced", "2", "medium", "Walmart"),
-                _ing("Avocado oil divided stovetop only", "2", "tbsp", "Walmart"),
-                _ing("Olive oil for zucchini air fry", "1", "tbsp", "Walmart"),
-                _ing("Garlic minced", "3", "cloves", "Walmart"),
-                _ing("Garlic powder", "1", "tsp", "Walmart"),
-                _ing("Paprika", "1", "tsp", "Walmart"),
-                _ing("Onion powder", "1", "tsp", "Walmart"),
-                _ing("Salt + pepper (to taste)", "0", "tsp", "Walmart"),
-                _ing("Fresh parsley garnish (to taste)", "0", "tsp", "Walmart"),
-                _ing("Honey (sauce)", "1.33", "tbsp", "Walmart"),
-                _ing("Chipotle in adobo (sauce)", "4", "tbsp", "Walmart"),
-                _ing("Lime whole juiced (sauce)", "1", "lime", "Walmart"),
-                _ing("Greek yogurt (sauce)", "1", "cup", "Costco"),
-            ],
-        ),
-        Recipe(
             name="Bibimbap",
             base_servings=6,
             calories_per_serving=0,
-            tier="A",
             notes=_notes(
                 "[Protein: Ground Beef] [Slots: M2 M4]", _PENDING,
-                "A-tier. Traditional bibimbap inspired. Crispy rice step removed - cauliflower rice provides texture contrast. Store egg and sauce separately for meal prep. Fried egg replaces scrambled for better flavor - runny yolk acts as secondary sauce.",
+                "Traditional bibimbap inspired. Crispy rice step removed - cauliflower rice provides texture contrast. Store egg and sauce separately for meal prep. Fried egg replaces scrambled for better flavor - runny yolk acts as secondary sauce.",
             ),
             instructions=[
                 "Cook 1.5 cups white rice in rice cooker.",
@@ -356,10 +292,9 @@ def all_seed_recipes() -> List[Recipe]:
             name="Spaghetti with Meat Sauce",
             base_servings=6,
             calories_per_serving=0,
-            tier="A",
             notes=_notes(
                 "[Protein: Ground Beef] [Slots: M2 M4]", _PENDING,
-                "A-tier. M2 by default, overflow to M4. Reheats well in microwave. Needs large oven-safe pan. 90/10 subbed for 88/12 - slightly leaner.",
+                "M2 by default, overflow to M4. Reheats well in microwave. Needs large oven-safe pan. 90/10 subbed for 88/12 - slightly leaner.",
             ),
             instructions=[
                 "Preheat oven to 425F.",
@@ -393,10 +328,9 @@ def all_seed_recipes() -> List[Recipe]:
             name="NY Strip Steak and Salad",
             base_servings=2,
             calories_per_serving=0,
-            tier="S",
             notes=_notes(
                 "[Protein: Steak] [Slots: M4]", _PENDING,
-                "S-tier. M4 only. Porcini powder adds deep umami. Carrot top chimichurri as steak sauce. Light sherry vinegar + EVOO dressing on salad. Use greens medley immediately - most perishable.",
+                "M4 only. Porcini powder adds deep umami. Carrot top chimichurri as steak sauce. Light sherry vinegar + EVOO dressing on salad. Use greens medley immediately - most perishable.",
             ),
             instructions=[
                 "Pat steaks dry. Season with salt, pepper, garlic powder, and 1/2 tsp porcini powder per steak.",
@@ -437,10 +371,9 @@ def all_seed_recipes() -> List[Recipe]:
             name="Salmon Poke Bowl",
             base_servings=4,
             calories_per_serving=0,
-            tier="S",
             notes=_notes(
                 "[Protein: Salmon] [Slots: M2 M4]", _PENDING,
-                "S-tier. M4 on weekdays, any slot on weekends. Batch prep rice (cheater sushi rice method), toppings, and sauce. Portion and freeze salmon individually - defrost per serving throughout the week and assemble fresh. Marinate defrosted salmon 15-20 min before assembling.",
+                "M4 on weekdays, any slot on weekends. Batch prep rice (cheater sushi rice method), toppings, and sauce. Portion and freeze salmon individually - defrost per serving throughout the week and assemble fresh. Marinate defrosted salmon 15-20 min before assembling.",
             ),
             instructions=[
                 "Cheater sushi rice: combine 1 cup short grain rice, water per rice cooker instructions minus 3 tbsp, 3 tbsp rice vinegar, 1 packet sweetener, 1/4 tsp salt. Cook in rice cooker as normal.",
@@ -467,37 +400,6 @@ def all_seed_recipes() -> List[Recipe]:
                 _ing("Pineapple diced", "2", "cup", "Costco"),
                 _ing("Cucumber sliced", "1", "whole", "Walmart"),
                 _ing("Avocado sliced", "1", "whole", "Walmart"),
-            ],
-        ),
-        Recipe(
-            name="Chili Crisp Fried Egg Skillet",
-            base_servings=2,
-            calories_per_serving=0,
-            notes=_notes(
-                "[Protein: Eggs] [Slots: M3]", _PENDING,
-                "M3 only. Zucchini air fried for better texture and caramelization. Lao Gan Ma chili crisp used as the frying oil for the eggs - key technique. Yolks should be runny.",
-            ),
-            instructions=[
-                "Toss diced zucchini with avocado oil, salt + pepper. Air fry at 400F for 10-12 minutes, shaking halfway until caramelized. Set aside.",
-                "Cook 1/2 cup short grain rice per rice cooker instructions.",
-                "Heat avocado oil in skillet over medium. Saute 2 cloves minced garlic 30 seconds.",
-                "Add diced bell pepper, cook 2-3 minutes until softened. Season with 1 tbsp soy sauce. Set veg aside.",
-                "Add 1 tsp chili crisp per serving directly to skillet. Let oil heat 30 seconds.",
-                "Crack 2 eggs per serving into chili crisp oil. Fry until whites are set but yolks still runny.",
-                "Plate: rice -> bell pepper -> air fried zucchini -> fried eggs -> drizzle remaining chili crisp oil from pan -> garnish with spring onion and sesame seeds.",
-            ],
-            ingredients=[
-                _ing("Eggs", "4", "eggs", "Costco"),
-                _ing("Lao Gan Ma chili crisp", "2", "tsp", "Asian Mart"),
-                _ing("Large zucchini diced", "1", "large", "Walmart"),
-                _ing("Bell pepper diced", "0.5", "pepper", "Walmart"),
-                _ing("Garlic minced", "2", "cloves", "Walmart"),
-                _ing("Avocado oil", "1", "tsp", "Walmart"),
-                _ing("Soy sauce", "1", "tbsp", "Asian Mart"),
-                _ing("Salt + pepper (to taste)", "0", "tsp", "Walmart"),
-                _ing("Spring onion sliced garnish (to taste)", "0", "tsp", "Walmart"),
-                _ing("Sesame seeds garnish (to taste)", "0", "tsp", "Asian Mart"),
-                _ing("Short grain Japanese rice (dry)", "0.5", "cup", "Asian Mart"),
             ],
         ),
     ]

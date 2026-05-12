@@ -244,6 +244,48 @@ def render_register_member_form() -> None:
     st.rerun()
 
 
+_EVERYBITE_CSS = """
+<style>
+/* EveryBite structural polish — paired with the palette in .streamlit/config.toml.
+   Kept narrow on purpose: rules target Streamlit's stable wrappers, not deep
+   internals that get renamed across versions. */
+
+/* Tighter, more confident headings. */
+h1 { font-weight: 700; letter-spacing: -0.02em; }
+h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
+
+/* Buttons: rounded, with weight. */
+div.stButton > button,
+div.stDownloadButton > button,
+button[kind="primary"],
+button[kind="secondary"] {
+    border-radius: 10px;
+    font-weight: 600;
+    padding: 0.45rem 1rem;
+}
+
+/* Subtle card feel on bordered containers (Streamlit's `border=True` option). */
+[data-testid="stExpander"],
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* Sidebar: a hairline edge so it reads as a separate surface. */
+section[data-testid="stSidebar"] {
+    border-right: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+/* Inputs: slightly softer corners. */
+div[data-baseweb="input"] > div,
+div[data-baseweb="select"] > div,
+textarea {
+    border-radius: 8px !important;
+}
+</style>
+"""
+
+
 def render_unauthenticated() -> None:
     st.title("EveryBite")
     st.caption("Meal planning that fits your week.")
@@ -357,6 +399,7 @@ def render_authenticated() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="EveryBite", page_icon=":material/restaurant:", layout="centered")
+    st.markdown(_EVERYBITE_CSS, unsafe_allow_html=True)
     if "user" in st.session_state:
         render_authenticated()
     else:
