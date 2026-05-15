@@ -58,10 +58,64 @@ def render(user: UserProfile,
         st.divider()
         _render_planned_meals(user, plan_entries, logged_by_plan_id, food_log_repo, today)
     else:
-        st.info("Nothing planned for today. Add planned meals on the Weekly Plan page, or log something off-plan below.")
+        _render_no_plan_cta(plan_repo, user, today)
 
     st.divider()
     _render_off_plan_section(user, off_plan_entries, food_log_repo, food_db, catalog_repo, today)
+
+
+def _render_no_plan_cta(plan_repo: SQLiteMealPlanRepository,
+                        user: UserProfile, today: date) -> None:
+    """Empty-state guidance for Today. Differs based on whether the user
+    has *any* meals planned anywhere in the current week — a brand-new
+    household sees a richer welcome, while a returning user with later
+    meals planned just gets a shortcut to the week view."""
+    from web.navigation import page as nav_page
+    # The week containing today, Monday-anchored.
+    week_start = today.fromordinal(today.toordinal() - today.weekday())
+    week_entries = plan_repo.find_by_week(user.household_id, week_start)
+
+    st.divider()
+    if not week_entries:
+        # First-time / empty-week state: full welcome with options.
+        st.subheader("Welcome to EveryBite")
+        st.caption(
+            "Nothing's on your plan yet. Here's what to do next — pick "
+            "whichever feels easiest:"
+        )
+        col1, col2 = st.columns(2)
+        with col1:
+            if (plan := nav_page("plan")):
+                st.page_link(
+                    plan, label="Plan this week",
+                    icon=":material/calendar_month:",
+                )
+            if (recipes := nav_page("recipes")):
+                st.page_link(
+                    recipes, label="Browse your recipes",
+                    icon=":material/menu_book:",
+                )
+        with col2:
+            if (settings := nav_page("settings")):
+                st.page_link(
+                    settings, label="Set your calorie goal",
+                    icon=":material/settings:",
+                )
+            if (pantry := nav_page("pantry")):
+                st.page_link(
+                    pantry, label="Check your pantry",
+                    icon=":material/kitchen:",
+                )
+        st.caption(
+            "You can also just log what you ate today below — planning "
+            "ahead is optional."
+        )
+    else:
+        # Plan exists this week but not for today specifically.
+        st.info("Nothing planned for today, though you've got meals later this week.")
+        from web.navigation import page as _np
+        if (plan := _np("plan")):
+            st.page_link(plan, label="Open this week's plan", icon=":material/calendar_month:")
 
 
 def _render_totals(user: UserProfile, log_entries: List[FoodLogEntry]) -> None:

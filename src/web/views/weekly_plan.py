@@ -104,7 +104,10 @@ def _render_add_meal_form(user: UserProfile,
                           recipe_repo: SQLiteRecipeRepository) -> None:
     recipes = recipe_repo.find_all_by_household(user.household_id)
     if not recipes:
-        st.info("Add some recipes first — there's nothing to plan with yet.")
+        st.info("No recipes yet — nothing to plan with.")
+        from web.navigation import page as nav_page
+        if (recipes_pg := nav_page("recipes")):
+            st.page_link(recipes_pg, label="Add a recipe", icon=":material/menu_book:")
         return
 
     st.subheader("Add a meal")

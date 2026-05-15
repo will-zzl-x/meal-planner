@@ -365,15 +365,25 @@ def today_page_entry() -> None:
 
 
 def profile_page_entry() -> None:
-    from web.views import profile
-    _render_sidebar()
-    profile.render(st.session_state.user, get_user_repo(), get_body_composition_service())
+    # Kept as a thin shim so old bookmarks / session links continue to work,
+    # but Profile + Household now live under Settings.
+    settings_page_entry()
 
 
 def household_page_entry() -> None:
-    from web.views import household
+    settings_page_entry()
+
+
+def settings_page_entry() -> None:
+    from web.views import settings
     _render_sidebar()
-    household.render(st.session_state.user, get_household_repo(), get_user_repo())
+    settings.render(
+        st.session_state.user,
+        get_user_repo(),
+        get_body_composition_service(),
+        get_household_repo(),
+        get_user_repo(),
+    )
 
 
 def render_authenticated() -> None:
@@ -382,16 +392,18 @@ def render_authenticated() -> None:
     toast = st.session_state.pop("welcome_toast", None)
     if toast:
         st.toast(toast, icon=":material/check_circle:")
-    pages = [
-        st.Page(today_page_entry, title="Today", icon=":material/today:", default=True),
-        st.Page(weekly_plan_page_entry, title="Weekly Plan", icon=":material/calendar_month:"),
-        st.Page(grocery_list_page_entry, title="Grocery List", icon=":material/shopping_cart:"),
-        st.Page(recipes_page_entry, title="Recipes", icon=":material/menu_book:"),
-        st.Page(pantry_page_entry, title="Pantry", icon=":material/kitchen:"),
-        st.Page(household_page_entry, title="Household", icon=":material/home:"),
-        st.Page(profile_page_entry, title="My Profile", icon=":material/person:"),
-    ]
-    pg = st.navigation(pages)
+    page_registry = {
+        "today": st.Page(today_page_entry, title="Today", icon=":material/today:", default=True),
+        "plan": st.Page(weekly_plan_page_entry, title="Plan", icon=":material/calendar_month:"),
+        "groceries": st.Page(grocery_list_page_entry, title="Groceries", icon=":material/shopping_cart:"),
+        "recipes": st.Page(recipes_page_entry, title="Recipes", icon=":material/menu_book:"),
+        "pantry": st.Page(pantry_page_entry, title="Pantry", icon=":material/kitchen:"),
+        "settings": st.Page(settings_page_entry, title="Settings", icon=":material/settings:"),
+    }
+    # Expose to views so empty-state CTAs can `page_link` across the app.
+    from web.navigation import set_pages
+    set_pages(page_registry)
+    pg = st.navigation(list(page_registry.values()))
     pg.run()
 
 
