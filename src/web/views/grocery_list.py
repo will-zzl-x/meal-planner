@@ -1,14 +1,15 @@
 """
-Grocery List view: shows what's still needed to cook this week's plan, after
-subtracting what's already in the pantry. Members see read-only; the planner
-sees the same view (no edits to make on this page).
+Grocery List view: shows what's still needed to cook the active cycle's plan,
+after subtracting what's already in the pantry. Members see read-only; the
+planner sees the same view (no edits to make on this page).
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import datetime
 
 import streamlit as st
 
+from core.interfaces.cycle_repository import ICycleRepository
 from core.interfaces.user_repository import UserProfile
 from core.services.grocery_list_service import GroceryListService
 from repositories.sqlite.inventory_repository import SQLiteInventoryRepository
@@ -20,24 +21,31 @@ def render(user: UserProfile,
            plan_repo: SQLiteMealPlanRepository,
            recipe_repo: SQLiteRecipeRepository,
            inventory_repo: SQLiteInventoryRepository,
-           grocery_service: GroceryListService) -> None:
+           grocery_service: GroceryListService,
+           cycle_repo: ICycleRepository) -> None:
     from web.navigation import page as nav_page
     st.title("Groceries")
-    st.caption("Everything you still need to cook this week's meals.")
+    st.caption("Everything you still need to cook your current cycle's meals.")
     if not user.household_id:
         st.warning("You're not in a household yet. Ask the planner for an invite code.")
         return
 
     _render_pantry_freshness_banner(user, inventory_repo)
 
-    monday = _current_week_monday()
-    st.caption(f"For week of {monday.strftime('%b %d, %Y')} (switch weeks on the Plan page)")
-
-    entries = plan_repo.find_by_week(user.household_id, monday)
-    if not entries:
-        st.info("No meals planned this week yet.")
+    cycle = cycle_repo.find_active(user.household_id)
+    if cycle is None:
+        st.info("No active planning cycle. Create one on the Plan page first.")
         if (plan := nav_page("plan")):
-            st.page_link(plan, label="Plan this week", icon=":material/calendar_month:")
+            st.page_link(plan, label="Go to Plan", icon=":material/calendar_month:")
+        return
+
+    st.caption(f"For your current cycle: **{cycle.label}**")
+
+    entries = plan_repo.find_by_date_range(user.household_id, cycle.start_date, cycle.end_date)
+    if not entries:
+        st.info("No meals planned in this cycle yet.")
+        if (plan := nav_page("plan")):
+            st.page_link(plan, label="Plan this cycle", icon=":material/calendar_month:")
         return
 
     recipes_by_id = {r.id: r for r in recipe_repo.find_all_by_household(user.household_id)}
@@ -45,7 +53,7 @@ def render(user: UserProfile,
     items = grocery_service.generate(entries, recipes_by_id, pantry)
 
     if not items:
-        st.success("Your pantry already covers everything you've planned this week!")
+        st.success("Your pantry already covers everything you've planned for this cycle!")
         if (pantry_pg := nav_page("pantry")):
             st.page_link(pantry_pg, label="Open the Pantry", icon=":material/kitchen:")
         return
@@ -54,24 +62,14 @@ def render(user: UserProfile,
     for item in items:
         st.write(f"- {item.name} — **{item.actual_need} {item.unit}**")
 
-    # Plain text block for easy copy-paste into a notes app or message.
     plain = "\n".join(f"{i.actual_need} {i.unit} {i.name}" for i in items)
     with st.expander("Copy as text"):
         st.code(plain, language="text")
 
 
-def _current_week_monday() -> date:
-    today = date.today()
-    monday_of_today = today - timedelta(days=today.weekday())
-    offset = st.session_state.get("week_offset", 0)
-    return monday_of_today + timedelta(weeks=offset)
-
-
 def _render_pantry_freshness_banner(user: UserProfile,
                                     inventory_repo: SQLiteInventoryRepository) -> None:
-    """If the pantry hasn't been reviewed in >3 days, surface a warning.
-    The grocery list subtracts pantry inventory, so a stale pantry
-    silently makes the list wrong (showing items you actually have)."""
+    """If the pantry hasn't been reviewed in >3 days, surface a warning."""
     from web.navigation import page as nav_page
     last = inventory_repo.last_reviewed_at(user.household_id)
     if last is None:
@@ -96,5 +94,4 @@ def _render_pantry_freshness_banner(user: UserProfile,
 
 
 def _days_since(ts) -> int:
-    from datetime import datetime
     return max(0, (datetime.now() - ts).days)

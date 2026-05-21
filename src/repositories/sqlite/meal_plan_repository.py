@@ -89,6 +89,21 @@ class SQLiteMealPlanRepository(IMealPlanRepository):
         entries.sort(key=lambda e: (e.planned_date, _MEAL_TYPE_ORDER[e.meal_type]))
         return entries
 
+    def find_by_date_range(self, household_id: str, start: date, end: date) -> List[MealPlanEntry]:
+        with self.db_manager.get_connection() as conn:
+            cursor = conn.execute(
+                _SELECT_WITH_RECIPE_JOIN +
+                """
+                WHERE mp.household_id = ?
+                  AND mp.planned_date >= ?
+                  AND mp.planned_date <= ?
+                """,
+                (household_id, start.isoformat(), end.isoformat()),
+            )
+            entries = [_row_to_entry(r) for r in cursor.fetchall()]
+        entries.sort(key=lambda e: (e.planned_date, _MEAL_TYPE_ORDER[e.meal_type]))
+        return entries
+
     def find_by_date(self, household_id: str, day: date) -> List[MealPlanEntry]:
         with self.db_manager.get_connection() as conn:
             cursor = conn.execute(

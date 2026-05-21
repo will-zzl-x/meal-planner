@@ -51,6 +51,7 @@ from repositories.sqlite.household_repository import SQLiteHouseholdRepository  
 from repositories.sqlite.ingredient_catalog_repository import (  # noqa: E402
     SQLiteIngredientCatalogRepository,
 )
+from repositories.sqlite.cycle_repository import SQLiteCycleRepository  # noqa: E402
 from repositories.sqlite.inventory_repository import SQLiteInventoryRepository  # noqa: E402
 from repositories.sqlite.meal_plan_repository import SQLiteMealPlanRepository  # noqa: E402
 from repositories.sqlite.recipe_repository import SQLiteRecipeRepository  # noqa: E402
@@ -78,6 +79,11 @@ def get_auth_service() -> AuthService:
         # any error so registration never fails because of network.
         backfiller=SeedRecipeBackfiller(food_db, catalog_repo, recipe_repo),
     )
+
+
+@st.cache_resource
+def get_cycle_repo() -> SQLiteCycleRepository:
+    return SQLiteCycleRepository(DB_PATH)
 
 
 @st.cache_resource
@@ -337,7 +343,12 @@ def pantry_page_entry() -> None:
 def weekly_plan_page_entry() -> None:
     from web.views import weekly_plan
     _render_sidebar()
-    weekly_plan.render(st.session_state.user, get_meal_plan_repo(), get_recipe_repo())
+    weekly_plan.render(
+        st.session_state.user,
+        get_meal_plan_repo(),
+        get_recipe_repo(),
+        get_cycle_repo(),
+    )
 
 
 def grocery_list_page_entry() -> None:
@@ -349,6 +360,7 @@ def grocery_list_page_entry() -> None:
         get_recipe_repo(),
         get_inventory_repo(),
         get_grocery_service(),
+        get_cycle_repo(),
     )
 
 
@@ -361,6 +373,7 @@ def today_page_entry() -> None:
         get_food_log_repo(),
         get_food_database(),
         get_catalog_repo(),
+        get_cycle_repo(),
     )
 
 

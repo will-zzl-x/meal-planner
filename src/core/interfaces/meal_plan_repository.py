@@ -52,6 +52,11 @@ class IMealPlanRepository(ABC):
         pass
 
     @abstractmethod
+    def find_by_date_range(self, household_id: str, start: date, end: date) -> List[MealPlanEntry]:
+        """Return entries in the inclusive date range [start, end]."""
+        pass
+
+    @abstractmethod
     def clear_week(self, household_id: str, week_start_date: date) -> int:
         """Remove all entries within the 7-day window. Returns the count removed."""
         pass

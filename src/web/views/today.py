@@ -19,6 +19,7 @@ from typing import Dict, List
 import streamlit as st
 
 from core.domain.models import CatalogIngredient
+from core.interfaces.cycle_repository import ICycleRepository
 from core.interfaces.food_log_repository import FoodLogEntry
 from core.interfaces.meal_plan_repository import MealPlanEntry
 from core.interfaces.user_repository import UserProfile
@@ -38,7 +39,8 @@ def render(user: UserProfile,
            plan_repo: SQLiteMealPlanRepository,
            food_log_repo: SQLiteFoodLogRepository,
            food_db: FoodDatabaseService,
-           catalog_repo: SQLiteIngredientCatalogRepository) -> None:
+           catalog_repo: SQLiteIngredientCatalogRepository,
+           cycle_repo: ICycleRepository) -> None:
     st.title("Today")
     today = date.today()
     st.caption(today.strftime("%A, %B %d, %Y"))
@@ -58,25 +60,27 @@ def render(user: UserProfile,
         st.divider()
         _render_planned_meals(user, plan_entries, logged_by_plan_id, food_log_repo, today)
     else:
-        _render_no_plan_cta(plan_repo, user, today)
+        _render_no_plan_cta(plan_repo, cycle_repo, user, today)
 
     st.divider()
     _render_off_plan_section(user, off_plan_entries, food_log_repo, food_db, catalog_repo, today)
 
 
 def _render_no_plan_cta(plan_repo: SQLiteMealPlanRepository,
+                        cycle_repo: ICycleRepository,
                         user: UserProfile, today: date) -> None:
-    """Empty-state guidance for Today. Differs based on whether the user
-    has *any* meals planned anywhere in the current week — a brand-new
-    household sees a richer welcome, while a returning user with later
-    meals planned just gets a shortcut to the week view."""
+    """Empty-state guidance for Today. Differs based on whether the active
+    cycle has any meals planned at all — brand-new household sees a welcome,
+    a returning user with meals planned later in the cycle gets a shortcut."""
     from web.navigation import page as nav_page
-    # The week containing today, Monday-anchored.
-    week_start = today.fromordinal(today.toordinal() - today.weekday())
-    week_entries = plan_repo.find_by_week(user.household_id, week_start)
+    cycle = cycle_repo.find_active(user.household_id)
+    cycle_entries = (
+        plan_repo.find_by_date_range(user.household_id, cycle.start_date, cycle.end_date)
+        if cycle else []
+    )
 
     st.divider()
-    if not week_entries:
+    if not cycle_entries:
         # First-time / empty-week state: full welcome with options.
         st.subheader("Welcome to EveryBite")
         st.caption(
