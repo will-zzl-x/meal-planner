@@ -55,13 +55,13 @@ class SQLiteRecipeRepository(IRecipeRepository):
                 """
                 INSERT INTO recipes (id, household_id, name, base_servings,
                                      calories_per_serving, created_by_user_id,
-                                     instructions, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                     instructions, notes, image_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (recipe_id, household_id, recipe.name, recipe.base_servings,
                  recipe.calories_per_serving, created_by_user_id,
                  _serialize_instructions(recipe.instructions),
-                 recipe.notes),
+                 recipe.notes, recipe.image_url),
             )
 
             for ingredient_id, ingredient in ingredient_ids:
@@ -86,6 +86,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             id=recipe_id,
             instructions=list(recipe.instructions),
             notes=recipe.notes,
+            image_url=recipe.image_url,
         )
 
     def find_by_id(self, recipe_id: str, household_id: str) -> Optional[Recipe]:
@@ -94,7 +95,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             recipe_row = cursor.execute(
                 """
                 SELECT id, name, base_servings, calories_per_serving,
-                       instructions, notes
+                       instructions, notes, image_url
                 FROM recipes
                 WHERE id = ? AND household_id = ?
                 """,
@@ -110,7 +111,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             cursor.execute(
                 """
                 SELECT id, name, base_servings, calories_per_serving,
-                       instructions, notes
+                       instructions, notes, image_url
                 FROM recipes
                 WHERE household_id = ?
                 ORDER BY created_at DESC
@@ -148,12 +149,13 @@ class SQLiteRecipeRepository(IRecipeRepository):
                     calories_per_serving = ?,
                     instructions = ?,
                     notes = ?,
+                    image_url = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND household_id = ?
                 """,
                 (recipe.name, recipe.base_servings, recipe.calories_per_serving,
                  _serialize_instructions(recipe.instructions),
-                 recipe.notes, recipe.id, household_id),
+                 recipe.notes, recipe.image_url, recipe.id, household_id),
             )
 
             # Replace ingredient associations.
@@ -184,6 +186,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             id=recipe.id,
             instructions=list(recipe.instructions),
             notes=recipe.notes,
+            image_url=recipe.image_url,
         )
 
     def delete_by_name(self, name: str, household_id: str) -> bool:
@@ -218,7 +221,7 @@ class SQLiteRecipeRepository(IRecipeRepository):
             row = cursor.execute(
                 """
                 SELECT id, name, base_servings, calories_per_serving,
-                       instructions, notes
+                       instructions, notes, image_url
                 FROM recipes
                 WHERE name = ? AND household_id = ?
                 """,
@@ -301,4 +304,5 @@ class SQLiteRecipeRepository(IRecipeRepository):
             id=recipe_row['id'],
             instructions=_deserialize_instructions(recipe_row['instructions']),
             notes=recipe_row['notes'],
+            image_url=recipe_row['image_url'],
         )

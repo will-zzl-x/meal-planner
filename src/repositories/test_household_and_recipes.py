@@ -147,6 +147,26 @@ def test_recipe_metadata_roundtrips(tmp_path):
     assert by_name["rice"].store == "Walmart"
 
 
+def test_recipe_image_url_roundtrips(tmp_path):
+    """A recipe's image_url survives save → reload → update → reload."""
+    households, users, recipes = _setup(tmp_path)
+    h = households.create("Smiths")
+    alice = users.create_user("Alice", "a@example.com", household_id=h.id, is_planner=True)
+
+    recipe = _sample_recipe()
+    recipe.image_url = "https://example.com/dish.jpg"
+    saved = recipes.save(recipe, household_id=h.id, created_by_user_id=alice.user_id)
+    assert saved.image_url == "https://example.com/dish.jpg"
+
+    reloaded = recipes.find_by_name(saved.name, household_id=h.id)
+    assert reloaded.image_url == "https://example.com/dish.jpg"
+
+    reloaded.image_url = None
+    updated = recipes.update(reloaded, household_id=h.id)
+    assert updated.image_url is None
+    assert recipes.find_by_id(saved.id, household_id=h.id).image_url is None
+
+
 def test_user_password_and_planner_flag_persist(tmp_path):
     households, users, _ = _setup(tmp_path)
     h = households.create("The Smiths")

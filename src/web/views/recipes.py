@@ -181,6 +181,11 @@ def _render_recipe_card(user: UserProfile,
                         recipe: Recipe,
                         breakdown,
                         coverage: CoverageReport) -> None:
+    if recipe.image_url:
+        # use_container_width so the image scales naturally on phone & desktop;
+        # a bad/dead URL renders as Streamlit's broken-image icon — acceptable
+        # for V1 since we don't host or validate the link.
+        st.image(recipe.image_url, use_container_width=True)
     st.markdown("**Ingredients**")
     if breakdown.lines:
         for line in breakdown.lines:
@@ -275,6 +280,10 @@ def _render_add_recipe(user: UserProfile,
     with st.form("add_recipe_form", clear_on_submit=False):
         name = st.text_input("Recipe name").strip()
         base_servings = st.number_input("Servings", min_value=1, max_value=50, value=1, step=1)
+        image_url = st.text_input(
+            "Image URL (optional)",
+            placeholder="https://… link to a photo of the finished dish",
+        ).strip()
         instructions_raw = st.text_area("Instructions (one step per line)", height=120)
         notes = st.text_area("Notes (optional)", height=80)
         submitted = st.form_submit_button("Save recipe", type="primary")
@@ -296,6 +305,7 @@ def _render_add_recipe(user: UserProfile,
             calories_per_serving=_per_serving_total(drafts, int(base_servings)),
             instructions=[s.strip() for s in instructions_raw.splitlines() if s.strip()],
             notes=notes.strip() or None,
+            image_url=image_url or None,
         )
         recipe_repo.save(recipe, household_id=user.household_id, created_by_user_id=user.user_id)
     except SecurityValidationError as e:
@@ -343,6 +353,11 @@ def _render_edit_recipe(user: UserProfile,
             "Servings", min_value=1, max_value=50,
             value=recipe.base_servings, step=1,
         )
+        image_url = st.text_input(
+            "Image URL (optional)",
+            value=recipe.image_url or "",
+            placeholder="https://… link to a photo of the finished dish",
+        ).strip()
         instructions_raw = st.text_area(
             "Instructions (one step per line)",
             value="\n".join(recipe.instructions), height=120,
@@ -373,6 +388,7 @@ def _render_edit_recipe(user: UserProfile,
         recipe.calories_per_serving = _per_serving_total(drafts, int(base_servings))
         recipe.instructions = [s.strip() for s in instructions_raw.splitlines() if s.strip()]
         recipe.notes = notes.strip() or None
+        recipe.image_url = image_url or None
         result = recipe_repo.update(recipe, household_id=user.household_id)
     except SecurityValidationError as e:
         st.error(f"Invalid input: {e}")
