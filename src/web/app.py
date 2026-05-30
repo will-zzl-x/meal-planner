@@ -40,6 +40,7 @@ from core.services.auth_service import (  # noqa: E402
     EmailAlreadyRegisteredError,
     HouseholdNotFoundError,
 )
+from core.services.cycle_macro_service import CycleMacroService  # noqa: E402
 from core.services.flexible_dieting import BodyCompositionService  # noqa: E402
 from core.services.food_database_service import FoodDatabaseService  # noqa: E402
 from core.services.grocery_list_service import GroceryListService  # noqa: E402
@@ -144,6 +145,11 @@ def get_calorie_calculator() -> RecipeCalorieCalculator:
 @st.cache_resource
 def get_coverage_service() -> PantryCoverageService:
     return PantryCoverageService(get_inventory_repo(), get_catalog_repo())
+
+
+@st.cache_resource
+def get_cycle_macro_service() -> CycleMacroService:
+    return CycleMacroService(get_calorie_calculator())
 
 
 # --- Auth screens ---------------------------------------------------------
@@ -348,6 +354,7 @@ def weekly_plan_page_entry() -> None:
         get_meal_plan_repo(),
         get_recipe_repo(),
         get_cycle_repo(),
+        get_cycle_macro_service(),
     )
 
 

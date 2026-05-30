@@ -14,6 +14,7 @@ import streamlit as st
 from core.interfaces.cycle_repository import Cycle, ICycleRepository
 from core.interfaces.meal_plan_repository import MealPlanEntry
 from core.interfaces.user_repository import UserProfile
+from core.services.cycle_macro_service import CycleMacroService, DayMacros
 from repositories.sqlite.cycle_repository import SQLiteCycleRepository
 from repositories.sqlite.meal_plan_repository import SQLiteMealPlanRepository
 from repositories.sqlite.recipe_repository import SQLiteRecipeRepository
@@ -25,7 +26,8 @@ _MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"]
 def render(user: UserProfile,
            plan_repo: SQLiteMealPlanRepository,
            recipe_repo: SQLiteRecipeRepository,
-           cycle_repo: ICycleRepository) -> None:
+           cycle_repo: ICycleRepository,
+           macro_service: CycleMacroService) -> None:
     st.title("Plan")
     if not user.household_id:
         st.warning("You're not in a household yet. Ask the planner for an invite code.")
@@ -39,12 +41,15 @@ def render(user: UserProfile,
 
     _render_cycle_header(user, cycle, cycle_repo)
 
-    entries_by_day = _group_by_day(
-        plan_repo.find_by_date_range(user.household_id, cycle.start_date, cycle.end_date)
-    )
+    entries = plan_repo.find_by_date_range(user.household_id, cycle.start_date, cycle.end_date)
+    entries_by_day = _group_by_day(entries)
     days = _days_in_range(cycle.start_date, cycle.end_date)
     for day in days:
         _render_day(user, plan_repo, day, entries_by_day.get(day, []))
+
+    if entries:
+        st.divider()
+        _render_macro_summary(user, cycle, entries, recipe_repo, macro_service)
 
     if user.is_planner:
         st.divider()
@@ -136,6 +141,78 @@ def _render_day(user: UserProfile,
                                   use_container_width=True):
                     plan_repo.delete_entry(e.id, user.household_id)
                     st.rerun()
+
+
+def _render_macro_summary(user: UserProfile,
+                          cycle: Cycle,
+                          entries: List[MealPlanEntry],
+                          recipe_repo: SQLiteRecipeRepository,
+                          macro_service: CycleMacroService) -> None:
+    """A daily cal/P/C/F table + cycle totals, with calorie-vs-target chips.
+    Expander-wrapped so it doesn't dominate the page on small screens."""
+    recipes_by_id = {r.id: r for r in recipe_repo.find_all_by_household(user.household_id)}
+    summary = macro_service.summarize(
+        cycle.start_date, cycle.end_date, entries, recipes_by_id,
+    )
+    target = user.daily_calorie_target
+
+    with st.expander("Macros at a glance", expanded=False):
+        st.caption(
+            "Planned totals per day from your recipe ingredients. "
+            "_Macros are 0 for any meal whose recipe isn't catalog-backed yet — "
+            "edit it through search on Recipes to fill them in._"
+            if summary.has_any_unaccounted else
+            "Planned totals per day from your recipe ingredients."
+        )
+
+        rows = [_macro_row(d, target) for d in summary.days]
+        st.table(rows)
+
+        cycle_days = cycle.length_days
+        cycle_target = target * cycle_days if target else None
+        st.markdown(
+            f"**Cycle totals** — "
+            f"{summary.total_calories} cal · "
+            f"P {_fmt_g(summary.total_protein)} · "
+            f"C {_fmt_g(summary.total_carbs)} · "
+            f"F {_fmt_g(summary.total_fat)}"
+        )
+        if cycle_target:
+            diff = summary.total_calories - cycle_target
+            verb = "over" if diff > 0 else "under"
+            if diff == 0:
+                st.caption(f"_On target for the cycle ({cycle_target} cal)._")
+            else:
+                st.caption(
+                    f"_{abs(diff)} cal {verb} the cycle target of {cycle_target} "
+                    f"cal ({cycle_days} days × {target})._"
+                )
+        else:
+            st.caption("_Set a daily calorie target on Settings to see how this compares._")
+
+
+def _macro_row(day: DayMacros, target: int | None) -> dict:
+    """One row of the macro table — keeps column headings stable across days."""
+    if target:
+        delta = day.calories - target
+        if delta == 0:
+            vs_target = "on target"
+        else:
+            vs_target = f"{'+' if delta > 0 else ''}{delta} cal"
+    else:
+        vs_target = "—"
+    return {
+        "Day": day.day.strftime("%a %b %d"),
+        "Cal": day.calories,
+        "P (g)": _fmt_g(day.protein),
+        "C (g)": _fmt_g(day.carbs),
+        "F (g)": _fmt_g(day.fat),
+        "vs target": vs_target,
+    }
+
+
+def _fmt_g(value) -> str:
+    return f"{int(round(float(value)))}"
 
 
 def _render_add_meal_form(user: UserProfile,
